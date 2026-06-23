@@ -53,9 +53,11 @@ def _config_from_settings(settings: dict) -> engine.SRConfig:
     if tfs:
         cfg.timeframes = list(tfs)
     for key in ("atr_period", "atr_multiplier", "cluster_atr_multiplier", "min_score",
-                "max_distance_atr", "min_zone_width", "lookback", "min_bars"):
+                "max_distance_atr", "min_zone_width", "lookback", "min_bars", "tick_size"):
         if settings.get(key) is not None:
             setattr(cfg, key, type(getattr(cfg, key))(settings[key]))
+    if settings.get("use_close_for_swings") is not None:
+        cfg.use_close_for_swings = bool(settings["use_close_for_swings"])
     return cfg
 
 
@@ -165,13 +167,20 @@ class Api:
             cfg = _config_from_settings(settings)
             final_zones, _, _, tf_data, diagnostics = engine.compute_sr(master, cfg)
             inst_key = master["instrument"].iloc[0]
-            fig = charting.build_sr_figure(tf_data.get(inst_key, {}), final_zones, inst_key, cfg.lookback)
+            fig = charting.build_sr_figure(tf_data.get(inst_key, {}), final_zones, inst_key, cfg.lookback, cfg.tick_size)
+            atr_by_tf = {}
+            if not diagnostics.empty:
+                for r in diagnostics[diagnostics["status"] == "used"].to_dict("records"):
+                    if r.get("atr") is not None:
+                        atr_by_tf[r["timeframe"]] = float(r["atr"])
             return {
                 "ok": True,
                 "figure": fig.to_json(),
                 "zones": _jsonsafe(charting.zones_to_records(final_zones)),
                 "summary": _jsonsafe(charting.summarize_zones(final_zones)),
                 "diagnostics": _df_records(diagnostics),
+                "atr_by_tf": _jsonsafe(atr_by_tf),
+                "tick_size": float(cfg.tick_size),
             }
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc), "trace": traceback.format_exc()}

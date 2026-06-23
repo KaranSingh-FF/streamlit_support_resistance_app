@@ -39,8 +39,18 @@ def _ordered_timeframes(tf_data: dict) -> list[str]:
     return present
 
 
-def build_sr_figure(tf_data: dict, final_zones: pd.DataFrame, instrument: str, lookback: int = 300):
+def _tick_decimals(tick: float) -> int:
+    """Decimal places implied by a tick size (0.01 -> 2)."""
+    if not tick or tick <= 0:
+        return 4
+    import math
+
+    return max(0, min(8, int(-math.floor(math.log10(tick)))))
+
+
+def build_sr_figure(tf_data: dict, final_zones: pd.DataFrame, instrument: str, lookback: int = 300, tick_size: float = 0.01):
     """Build the multi-panel candlestick + S/R figure for ONE instrument."""
+    dec = _tick_decimals(tick_size)
     timeframes = _ordered_timeframes(tf_data)
     if not timeframes:
         return go.Figure(layout={"template": "plotly_dark", "paper_bgcolor": BG, "plot_bgcolor": BG,
@@ -127,8 +137,8 @@ def build_sr_figure(tf_data: dict, final_zones: pd.DataFrame, instrument: str, l
                     line=dict(width=0), mode="lines", hoveron="fills",
                     name=("Support" if side == "support" else "Resistance"),
                     legendgroup=grp, showlegend=first(grp),
-                    text=(f"<b>{side.upper()}</b> @ {z['zone_center']:.4f}<br>"
-                          f"range {z['zone_low']:.4f}–{z['zone_high']:.4f}<br>"
+                    text=(f"<b>{side.upper()}</b> @ {z['zone_center']:.{dec}f}<br>"
+                          f"range {z['zone_low']:.{dec}f}–{z['zone_high']:.{dec}f}<br>"
                           f"score {z['score']} · touches {int(z['touches'])}<br>"
                           f"timeframes: {z['timeframes']}<br>"
                           f"distance: {z['distance_atr']} ATR"),
@@ -142,7 +152,7 @@ def build_sr_figure(tf_data: dict, final_zones: pd.DataFrame, instrument: str, l
             tag = "S" if z["side"] == "support" else "R"
             fig.add_annotation(
                 xref="paper", x=1.004, y=z["zone_center"], yref="y1",
-                text=f"{tag} {z['zone_center']:.4f} · {z['score']}",
+                text=f"{tag} {z['zone_center']:.{dec}f} · {z['score']}",
                 showarrow=False, xanchor="left", font=dict(size=10, color=color),
             )
 
@@ -150,7 +160,7 @@ def build_sr_figure(tf_data: dict, final_zones: pd.DataFrame, instrument: str, l
         pad = (y_hi - y_lo) * 0.04
         fig.update_yaxes(range=[y_lo - pad, y_hi + pad])
 
-    title = f"{instrument}  ·  last {current_price:.4f}" if current_price is not None else instrument
+    title = f"{instrument}  ·  last {current_price:.{dec}f}" if current_price is not None else instrument
     fig.update_layout(
         template="plotly_dark",
         title=dict(text=title, x=0.01, y=0.985, font=dict(size=18, color="#e6e9ef")),

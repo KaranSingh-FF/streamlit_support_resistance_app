@@ -53,6 +53,11 @@
   .card.resistance{border-left:3px solid var(--resistance)} .card.resistance .val{color:var(--resistance)}
   .card.price{border-left:3px solid var(--warn)} .card.price .val{color:var(--warn)}
   .cards.hidden{display:none}
+  .atrbar{padding:5px 14px;background:var(--panel);border-bottom:1px solid var(--border);
+    font-size:12px;color:var(--muted)}
+  .atrbar.hidden{display:none}
+  .atrbar b{color:var(--text);font-weight:600}
+  .atrbar .v{color:var(--accent);font-weight:600}
   #chart{flex:1 1 auto;min-height:280px;overflow:auto}
   .table-wrap{flex:0 0 auto;height:32%;min-height:130px;max-height:42%;overflow:auto;border-top:1px solid var(--border);background:var(--panel)}
   table{width:100%;border-collapse:collapse;font-size:12px}
@@ -124,16 +129,23 @@
         <input type="range" id="atrMult" min="0.05" max="1" step="0.05" value="0.25"></div>
       <div class="sld">Chart bars <span class="v" id="vLb">300</span>
         <input type="range" id="lookback" min="50" max="1500" step="50" value="300"></div>
+      <div style="margin-top:12px">Tick size (snap levels to grid)
+        <input type="number" id="tickSize" value="0.01" step="0.001" min="0"></div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:12px;font-size:12px;cursor:pointer">
+        <input type="checkbox" id="useClose" style="width:auto;margin:0">
+        Use closes for swings (ignore wicks)</label>
     </div>
 
     <div class="grp">
       <button id="btnRun" class="primary">▶ Run S/R Engine</button>
+      <button id="btnCopy">⧉ Copy zones (TSV)</button>
     </div>
   </aside>
 
   <section class="main">
     <div class="status" id="status"><span>Ready.</span><span id="statusRight"></span></div>
     <div class="cards hidden" id="cards"></div>
+    <div class="atrbar hidden" id="atrbar"></div>
     <div id="chart"><div class="empty">Select an instrument and click <b>Run S/R Engine</b>.</div></div>
     <div class="table-wrap">
       <table id="zonesTable"><thead></thead><tbody></tbody></table>
@@ -167,6 +179,7 @@ let API = null;
 let pickedPath = null;
 let pendingToken = null;
 let lastZones = [], zoneSort = {key:'score', dir:-1};
+let tickDecimals = 2;
 
 function $(id){return document.getElementById(id)}
 function setStatus(msg, cls){const s=$('status'); s.className='status '+(cls||''); s.firstElementChild.innerHTML=msg;}
@@ -180,7 +193,19 @@ function gatherSettings(){
     max_distance_atr: parseFloat($('maxDist').value),
     atr_multiplier: parseFloat($('atrMult').value),
     lookback: parseInt($('lookback').value),
+    tick_size: parseFloat($('tickSize').value) || 0,
+    use_close_for_swings: $('useClose').checked,
   };
+}
+
+function priceDecimals(){ return tickDecimals; }
+function fmtPrice(v){ return typeof v==='number' ? v.toFixed(tickDecimals) : (v==null?'—':v); }
+
+function sortedZones(){
+  return [...lastZones].sort((a,b)=>{
+    const x=a[zoneSort.key], y=b[zoneSort.key];
+    return (typeof x==='number'? x-y : String(x).localeCompare(String(y))) * zoneSort.dir;
+  });
 }
 
 // live slider labels
@@ -266,18 +291,16 @@ function renderZones(){
   const cols = [['side','Side'],['zone_center','Center'],['zone_low','Low'],['zone_high','High'],
                 ['score','Score'],['touches','Touch'],['timeframes','TFs'],['distance_atr','Dist(ATR)']];
   const thead = $('zonesTable').tHead, tbody = $('zonesTable').tBodies[0];
-  thead.innerHTML = '<tr>'+cols.map(c=>`<th data-k="${c[0]}">${c[1]}</th>`).join('')+'</tr>';
+  thead.innerHTML = '<tr>'+cols.map(c=>{
+    const arrow = zoneSort.key===c[0] ? (zoneSort.dir<0?' ▼':' ▲') : '';
+    return `<th data-k="${c[0]}" title="Click to sort">${c[1]}${arrow}</th>`;
+  }).join('')+'</tr>';
   thead.querySelectorAll('th').forEach(th=>th.onclick=()=>{
     const k=th.dataset.k; zoneSort = {key:k, dir: zoneSort.key===k? -zoneSort.dir : -1}; renderZones();
   });
-  const rows = [...lastZones].sort((a,b)=>{
-    const x=a[zoneSort.key], y=b[zoneSort.key];
-    return (typeof x==='number'? x-y : String(x).localeCompare(String(y))) * zoneSort.dir;
-  });
-  const fmt = v => typeof v==='number' ? (Math.abs(v)<100? v.toFixed(4): v.toFixed(2)) : v;
-  tbody.innerHTML = rows.map(z=>`<tr>
+  tbody.innerHTML = sortedZones().map(z=>`<tr>
     <td class="side-${z.side}">${z.side}</td>
-    <td>${fmt(z.zone_center)}</td><td>${fmt(z.zone_low)}</td><td>${fmt(z.zone_high)}</td>
+    <td>${fmtPrice(z.zone_center)}</td><td>${fmtPrice(z.zone_low)}</td><td>${fmtPrice(z.zone_high)}</td>
     <td><b>${z.score}</b></td><td>${z.touches}</td><td>${z.timeframes}</td><td>${z.distance_atr}</td>
   </tr>`).join('');
 }
@@ -288,12 +311,46 @@ function renderSummary(s){
   const cards = $('cards');
   if(!s || s.current_price==null){cards.className='cards hidden';cards.innerHTML='';return;}
   const sup = s.nearest_support, res = s.nearest_resistance;
+  const atr = v => v==null?'—':Number(v).toFixed(2);
   const card = (cls,k,val,sub)=>`<div class="card ${cls}"><div class="k">${k}</div><div class="val">${val}</div><div class="sub">${sub||''}</div></div>`;
   cards.className='cards';
   cards.innerHTML =
-    card('price','Current price', fmtNum(s.current_price), `${s.n_support} support · ${s.n_resistance} resistance`) +
-    card('support','Nearest support', sup? fmtNum(sup.center):'—', sup? `${fmtNum(sup.distance_atr)} ATR away · score ${sup.score}`:'none') +
-    card('resistance','Nearest resistance', res? fmtNum(res.center):'—', res? `${fmtNum(res.distance_atr)} ATR away · score ${res.score}`:'none');
+    card('price','Current price', fmtPrice(s.current_price), `${s.n_support} support · ${s.n_resistance} resistance`) +
+    card('support','Nearest support', sup? fmtPrice(sup.center):'—', sup? `${atr(sup.distance_atr)} ATR away · score ${sup.score}`:'none') +
+    card('resistance','Nearest resistance', res? fmtPrice(res.center):'—', res? `${atr(res.distance_atr)} ATR away · score ${res.score}`:'none');
+}
+
+function renderAtr(atrByTf){
+  const bar = $('atrbar');
+  const keys = atrByTf ? Object.keys(atrByTf) : [];
+  if(!keys.length){ bar.className='atrbar hidden'; bar.innerHTML=''; return; }
+  const order = ['15min','1h','4h','1D','1W'];
+  keys.sort((a,b)=> (order.indexOf(a)+99*(order.indexOf(a)<0)) - (order.indexOf(b)+99*(order.indexOf(b)<0)));
+  bar.className='atrbar';
+  bar.innerHTML = '<b>ATR</b> &nbsp; ' + keys.map(k=>`${k} <span class="v">${Number(atrByTf[k]).toFixed(tickDecimals)}</span>`).join(' &nbsp;·&nbsp; ')
+    + ' &nbsp;<span style="opacity:.6">(distances above are in ATR units)</span>';
+}
+
+function copyZones(){
+  if(!lastZones.length){ setStatus('No zones to copy — run the engine first.','err'); return; }
+  const cols=['side','zone_center','zone_low','zone_high','score','touches','timeframes','distance_atr'];
+  const head=['Side','Center','Low','High','Score','Touches','Timeframes','Dist(ATR)'].join('\t');
+  const body=sortedZones().map(z=>cols.map(c=>z[c]).join('\t')).join('\n');
+  copyText(head+'\n'+body, lastZones.length);
+}
+function copyText(text, n){
+  const done=()=>setStatus(`Copied ${n} zones to clipboard (tab-separated).`,'ok');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
+  } else { fallbackCopy(text,done); }
+}
+function fallbackCopy(text,done){
+  const ta=document.createElement('textarea');
+  ta.value=text; ta.style.position='fixed'; ta.style.top='-1000px'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  let ok=false; try{ ok=document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+  ok ? done() : setStatus('Copy failed — select the table manually.','err');
 }
 
 function markSkippedTimeframes(diag){
@@ -310,7 +367,7 @@ function renderDiagnostics(diag){
   const wrap=$('diagWrap');
   if(!diag || !diag.length){wrap.style.display='none';return;}
   wrap.style.display='block';
-  const cols=['timeframe','status','bars','native','reason'];
+  const cols=['timeframe','status','bars','atr','native','reason'];
   $('diagTable').tHead.innerHTML='<tr>'+cols.map(c=>`<th>${c}</th>`).join('')+'</tr>';
   $('diagTable').tBodies[0].innerHTML = diag.map(d=>'<tr>'+cols.map(c=>`<td>${d[c]??''}</td>`).join('')+'</tr>').join('');
 }
@@ -325,7 +382,9 @@ async function runSR(){
   Plotly.react('chart', fig.data, fig.layout, {responsive:true, displaylogo:false, scrollZoom:true,
     modeBarButtonsToRemove:['select2d','lasso2d']});
   lastZones = res.zones || [];
+  tickDecimals = res.tick_size>0 ? Math.min(8, Math.max(0, Math.round(-Math.log10(res.tick_size)))) : 4;
   renderSummary(res.summary);
+  renderAtr(res.atr_by_tf);
   renderZones();
   renderDiagnostics(res.diagnostics);
   markSkippedTimeframes(res.diagnostics);
@@ -340,6 +399,7 @@ function init(){
   $('btnUpdate').onclick = startUpdate;
   $('btnDelete').onclick = deleteMaster;
   $('btnRun').onclick = runSR;
+  $('btnCopy').onclick = copyZones;
   $('invKeepAll').onclick = ()=> document.querySelectorAll('.inv-keep').forEach(c=>c.checked=true);
   $('invRemoveAll').onclick = ()=> document.querySelectorAll('.inv-keep').forEach(c=>c.checked=false);
   $('invApply').onclick = applyInvalid;

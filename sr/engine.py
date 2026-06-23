@@ -34,6 +34,8 @@ class SRConfig:
     min_zone_width: float = 0.005
     min_bars: int = 30
     lookback: int = 300
+    tick_size: float = 0.01            # snap S/R levels to this price increment (0 = off)
+    use_close_for_swings: bool = False  # detect swings on closes (ignore wicks) instead of high/low
     swing_windows: dict = field(default_factory=lambda: dict(DEFAULT_SWING_WINDOWS))
     timeframe_weights: dict = field(default_factory=lambda: dict(DEFAULT_TIMEFRAME_WEIGHTS))
 
@@ -182,14 +184,16 @@ def add_atr(df: pd.DataFrame, period: int) -> pd.DataFrame:
     return d
 
 
-def detect_swings(df: pd.DataFrame, window: int) -> pd.DataFrame:
+def detect_swings(df: pd.DataFrame, window: int, use_close: bool = False) -> pd.DataFrame:
+    """Mark swing highs/lows. With use_close=True, pivots are found on the close
+    series (ignoring wicks) — useful for spread instruments where wicks are noise."""
     d = df.copy().reset_index(drop=True)
     d["swing_high"] = False
     d["swing_low"] = False
     if len(d) < 2 * window + 1:
         return d
-    highs = d["high"].to_numpy()
-    lows = d["low"].to_numpy()
+    highs = (d["close"] if use_close else d["high"]).to_numpy()
+    lows = (d["close"] if use_close else d["low"]).to_numpy()
     for i in range(window, len(d) - window):
         if highs[i] >= max(highs[i - window:i].max(), highs[i + 1:i + window + 1].max()):
             d.loc[i, "swing_high"] = True
@@ -198,17 +202,19 @@ def detect_swings(df: pd.DataFrame, window: int) -> pd.DataFrame:
     return d
 
 
-def extract_levels(df: pd.DataFrame, instrument: str, timeframe: str) -> pd.DataFrame:
+def extract_levels(df: pd.DataFrame, instrument: str, timeframe: str, use_close: bool = False) -> pd.DataFrame:
     rows = []
     if df.empty:
         return pd.DataFrame()
     current_price = float(df["close"].iloc[-1])
     current_atr = float(df["atr"].iloc[-1]) if "atr" in df.columns and pd.notna(df["atr"].iloc[-1]) else np.nan
+    hi_src = "close" if use_close else "high"
+    lo_src = "close" if use_close else "low"
 
     for _, r in df[df["swing_high"]].iterrows():
-        rows.append({"instrument": instrument, "timeframe": timeframe, "datetime": r["datetime"], "level": float(r["high"]), "side": "resistance", "atr": float(r["atr"]), "current_price": current_price, "current_atr": current_atr})
+        rows.append({"instrument": instrument, "timeframe": timeframe, "datetime": r["datetime"], "level": float(r[hi_src]), "side": "resistance", "atr": float(r["atr"]), "current_price": current_price, "current_atr": current_atr})
     for _, r in df[df["swing_low"]].iterrows():
-        rows.append({"instrument": instrument, "timeframe": timeframe, "datetime": r["datetime"], "level": float(r["low"]), "side": "support", "atr": float(r["atr"]), "current_price": current_price, "current_atr": current_atr})
+        rows.append({"instrument": instrument, "timeframe": timeframe, "datetime": r["datetime"], "level": float(r[lo_src]), "side": "support", "atr": float(r["atr"]), "current_price": current_price, "current_atr": current_atr})
     return pd.DataFrame(rows)
 
 
@@ -253,7 +259,16 @@ def cluster_levels(levels_df: pd.DataFrame, atr_multiplier: float, cluster_atr_m
     return pd.DataFrame(out)
 
 
-def score_and_merge(zones_df: pd.DataFrame, timeframe_weights: dict, min_score: float, max_distance_atr: float, cluster_atr_multiplier: float) -> pd.DataFrame:
+def snap_to_tick(value, tick: float, mode: str = "round"):
+    """Round a price to the instrument's tick grid (mode: round / floor / ceil)."""
+    if not tick or tick <= 0 or value is None or not np.isfinite(value):
+        return value
+    q = value / tick
+    q = np.floor(q) if mode == "floor" else np.ceil(q) if mode == "ceil" else np.round(q)
+    return round(float(q) * tick, 10)
+
+
+def score_and_merge(zones_df: pd.DataFrame, timeframe_weights: dict, min_score: float, max_distance_atr: float, cluster_atr_multiplier: float, tick_size: float = 0.0) -> pd.DataFrame:
     if zones_df.empty:
         return zones_df
     d = zones_df.copy()
@@ -296,15 +311,31 @@ def score_and_merge(zones_df: pd.DataFrame, timeframe_weights: dict, min_score: 
             weights = np.array([max(x["base_score"], 0.1) for x in cl])
             centers = np.array([x["zone_center"] for x in cl])
             center = float(np.average(centers, weights=weights))
+            raw_low = min(x["zone_low"] for x in cl)
+            raw_high = max(x["zone_high"] for x in cl)
+            # Snap the zone to the tradeable tick grid so levels are real prices,
+            # and guarantee the zone spans at least one tick on each side.
+            if tick_size and tick_size > 0:
+                center = snap_to_tick(center, tick_size, "round")
+                zlow = snap_to_tick(raw_low, tick_size, "floor")
+                zhigh = snap_to_tick(raw_high, tick_size, "ceil")
+                if zhigh - zlow < 2 * tick_size:
+                    zlow = round(center - tick_size, 10)
+                    zhigh = round(center + tick_size, 10)
+                center = min(max(center, zlow), zhigh)
+            else:
+                zlow, zhigh = raw_low, raw_high
             tfs = sorted(set(x["timeframe"] for x in cl), key=lambda z: timeframe_weights.get(z, 0), reverse=True)
             score = float(sum(x["base_score"] for x in cl)) + max(0, len(tfs) - 1) * 2.0
             current_price = float(cl[-1]["current_price"])
             current_atr = float(cl[-1]["current_atr"])
             final.append({
                 "instrument": inst,
-                "side": side,
-                "zone_low": min(x["zone_low"] for x in cl),
-                "zone_high": max(x["zone_high"] for x in cl),
+                # side from the SNAPPED center, so support<=price / resistance>=price
+                # holds even when snapping nudges a zone across the current price.
+                "side": "support" if center <= current_price else "resistance",
+                "zone_low": zlow,
+                "zone_high": zhigh,
                 "zone_center": center,
                 "score": round(score, 2),
                 "touches": int(sum(x["touches"] for x in cl)),
@@ -318,6 +349,10 @@ def score_and_merge(zones_df: pd.DataFrame, timeframe_weights: dict, min_score: 
     out = pd.DataFrame(final)
     if out.empty:
         return out
+    # Tick-snapping can collapse two very-close clusters onto the same grid price;
+    # keep the higher-scored one.
+    if tick_size and tick_size > 0:
+        out = out.sort_values("score", ascending=False).drop_duplicates(["instrument", "side", "zone_center"], keep="first")
     out = out[(out["score"] >= min_score) & (out["distance_atr"] <= max_distance_atr)]
     return out.sort_values(["instrument", "score"], ascending=[True, False]).reset_index(drop=True)
 
@@ -378,7 +413,8 @@ def select_effective_timeframes(requested, native):
 
 
 def run_sr(df_master, timeframes, swing_windows, timeframe_weights, atr_period, atr_multiplier,
-           cluster_atr_multiplier, min_score, max_distance_atr, min_zone_width, min_bars=30):
+           cluster_atr_multiplier, min_score, max_distance_atr, min_zone_width, min_bars=30,
+           tick_size=0.0, use_close_for_swings=False):
     """Full pipeline. Returns (final_zones, raw_levels, timeframe_zones, tf_data, diagnostics)."""
     all_levels, all_tf_zones, tf_data = [], [], {}
     diagnostics = []
@@ -394,8 +430,8 @@ def run_sr(df_master, timeframes, swing_windows, timeframe_weights, atr_period, 
                 diagnostics.append({"instrument": inst, "timeframe": tf, "status": "skipped", "bars": len(df_tf), "native": str(native), "reason": f"only {len(df_tf)} bars (need >= {min_bars})"})
                 continue
             df_tf = add_atr(df_tf, atr_period)
-            df_tf = detect_swings(df_tf, swing_windows.get(tf, 5))
-            levels = extract_levels(df_tf, inst, tf)
+            df_tf = detect_swings(df_tf, swing_windows.get(tf, 5), use_close_for_swings)
+            levels = extract_levels(df_tf, inst, tf, use_close_for_swings)
             n_zones = 0
             if not levels.empty:
                 zones = cluster_levels(levels, atr_multiplier, cluster_atr_multiplier, min_zone_width)
@@ -404,10 +440,13 @@ def run_sr(df_master, timeframes, swing_windows, timeframe_weights, atr_period, 
                     all_tf_zones.append(zones)
                     n_zones = len(zones)
             tf_data[inst][tf] = df_tf
-            diagnostics.append({"instrument": inst, "timeframe": tf, "status": "used", "bars": len(df_tf), "native": str(native), "reason": f"{n_zones} raw zones"})
+            last_atr = float(df_tf["atr"].iloc[-1]) if "atr" in df_tf.columns and pd.notna(df_tf["atr"].iloc[-1]) else None
+            diagnostics.append({"instrument": inst, "timeframe": tf, "status": "used", "bars": len(df_tf),
+                                "native": str(native), "atr": round(last_atr, 6) if last_atr is not None else None,
+                                "reason": f"{n_zones} raw zones"})
     raw_levels = pd.concat(all_levels, ignore_index=True) if all_levels else pd.DataFrame()
     timeframe_zones = pd.concat(all_tf_zones, ignore_index=True) if all_tf_zones else pd.DataFrame()
-    final_zones = score_and_merge(timeframe_zones, timeframe_weights, min_score, max_distance_atr, cluster_atr_multiplier)
+    final_zones = score_and_merge(timeframe_zones, timeframe_weights, min_score, max_distance_atr, cluster_atr_multiplier, tick_size)
     return final_zones, raw_levels, timeframe_zones, tf_data, pd.DataFrame(diagnostics)
 
 
@@ -417,4 +456,5 @@ def compute_sr(df_master: pd.DataFrame, config: SRConfig):
         df_master, config.timeframes, config.swing_windows, config.timeframe_weights,
         config.atr_period, config.atr_multiplier, config.cluster_atr_multiplier,
         config.min_score, config.max_distance_atr, config.min_zone_width, config.min_bars,
+        config.tick_size, config.use_close_for_swings,
     )

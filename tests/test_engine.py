@@ -195,7 +195,8 @@ def test_compute_sr_matches_run_sr():
     a = engine.compute_sr(df, cfg)[0]
     b = engine.run_sr(df, cfg.timeframes, cfg.swing_windows, cfg.timeframe_weights, cfg.atr_period,
                       cfg.atr_multiplier, cfg.cluster_atr_multiplier, cfg.min_score,
-                      cfg.max_distance_atr, cfg.min_zone_width, cfg.min_bars)[0]
+                      cfg.max_distance_atr, cfg.min_zone_width, cfg.min_bars,
+                      cfg.tick_size, cfg.use_close_for_swings)[0]
     pd.testing.assert_frame_equal(a, b)
 
 
@@ -287,3 +288,37 @@ def test_engine_is_deterministic():
     a = engine.compute_sr(m, engine.SRConfig(timeframes=["1h", "4h", "1D"]))[0]
     b = engine.compute_sr(m, engine.SRConfig(timeframes=["1h", "4h", "1D"]))[0]
     pd.testing.assert_frame_equal(a, b)
+
+
+# --- tick size + close-based swings -----------------------------------------
+def test_snap_to_tick_modes():
+    assert engine.snap_to_tick(0.1234, 0.01) == 0.12
+    assert engine.snap_to_tick(0.1234, 0.01, "ceil") == 0.13
+    assert engine.snap_to_tick(0.1299, 0.01, "floor") == 0.12
+    assert engine.snap_to_tick(5.0, 0.0) == 5.0  # tick off -> unchanged
+
+
+def test_zones_snap_to_tick_grid():
+    fz = engine.compute_sr(descending(), engine.SRConfig(timeframes=["1h", "4h", "1D"], tick_size=0.01))[0]
+    assert not fz.empty
+    for col in ["zone_center", "zone_low", "zone_high"]:
+        off = (np.round(fz[col] / 0.01) - fz[col] / 0.01).abs().max()
+        assert off < 1e-6, f"{col} off the 0.01 grid"
+    assert (fz["zone_high"] - fz["zone_low"] >= 0.02 - 1e-9).all()  # >= one tick each side
+
+
+def test_use_close_for_swings_changes_levels():
+    df = descending()
+    a = engine.compute_sr(df, engine.SRConfig(timeframes=["1h", "4h", "1D"], use_close_for_swings=False))[0]
+    b = engine.compute_sr(df, engine.SRConfig(timeframes=["1h", "4h", "1D"], use_close_for_swings=True))[0]
+    assert not a.empty and not b.empty
+    assert not a[["zone_center", "score"]].reset_index(drop=True).equals(
+        b[["zone_center", "score"]].reset_index(drop=True))
+
+
+def test_tick_snapping_keeps_side_price_relative_off_grid():
+    # current price is NOT on the 0.01 grid here; snapping must not flip sides
+    fz = engine.compute_sr(descending(), engine.SRConfig(timeframes=["1h", "4h", "1D"], tick_size=0.01))[0]
+    cp = float(fz["current_price"].iloc[0])
+    assert (fz.loc[fz.side == "support", "zone_center"] <= cp).all()
+    assert (fz.loc[fz.side == "resistance", "zone_center"] >= cp).all()
