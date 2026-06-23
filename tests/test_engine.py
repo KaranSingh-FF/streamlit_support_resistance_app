@@ -269,6 +269,18 @@ def test_normalize_keeps_negative_and_flat_bars():
     assert len(engine.normalize_ohlcv(raw, "QH")) == 2  # negative spread + zero-range bar are valid
 
 
+def test_normalize_ohlcv_split_separates_invalid():
+    raw = pd.DataFrame({
+        "Date": ["2026-01-01T00:00:00Z", "2026-01-01T00:15:00Z", "2026-01-01T00:30:00Z"],
+        "Open": [10, 10, 10], "High": [12, 8, 11], "Low": [8, 9, 10], "Close": [11, 10, 10.5],
+    })  # middle row: High 8 < Low 9 -> invalid
+    valid, invalid = engine.normalize_ohlcv_split(raw, "T")
+    assert len(valid) == 2 and len(invalid) == 1
+    assert engine.ohlc_invalid_mask(invalid).all()
+    assert not engine.ohlc_invalid_mask(valid).any()
+    assert "High < Low" in engine.ohlc_invalid_reason(invalid.iloc[0])
+
+
 # --- determinism (#5) -------------------------------------------------------
 def test_engine_is_deterministic():
     m = descending()

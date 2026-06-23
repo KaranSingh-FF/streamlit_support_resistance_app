@@ -107,6 +107,44 @@ def test_api_run_unknown_instrument(tmp_store):
     assert res["ok"] is False and "No master data" in res["error"]
 
 
+def _invalid_xlsx(path):
+    df = pd.DataFrame({
+        "Date": ["2026-01-01T00:00:00Z", "2026-01-01T00:15:00Z", "2026-01-01T00:30:00Z"],
+        "Open": [10, 10, 10], "High": [12, 8, 11], "Low": [8, 9, 10], "Close": [11, 10, 10.5],
+    })  # middle row invalid (High 8 < Low 9)
+    return _write_xlsx(path, df)
+
+
+def test_preview_then_commit_remove_invalid(tmp_store):
+    api = desktop.Api()
+    p = _invalid_xlsx(tmp_store / "x.xlsx")
+    pv = api.preview_upload(str(p), "T", "Data")
+    assert pv["ok"] and pv["n_total"] == 3 and pv["n_valid"] == 2 and pv["n_invalid"] == 1
+    json.dumps(pv, allow_nan=False)  # strict-JSON for the bridge
+    res = api.commit_upload(pv["token"], [])  # keep none -> drop the invalid row
+    assert res["ok"]
+    assert res["stats"]["master_rows_after"] == 2 and res["stats"]["invalid_removed"] == 1
+
+
+def test_preview_then_commit_keep_invalid(tmp_store):
+    api = desktop.Api()
+    p = _invalid_xlsx(tmp_store / "x.xlsx")
+    pv = api.preview_upload(str(p), "T", "Data")
+    res = api.commit_upload(pv["token"], [pv["invalid_rows"][0]["key"]])  # keep the invalid row
+    assert res["ok"] and res["stats"]["master_rows_after"] == 3 and res["stats"]["invalid_kept"] == 1
+
+
+def test_commit_with_expired_token_errors(tmp_store):
+    assert desktop.Api().commit_upload("nope", [])["ok"] is False
+
+
+def test_preview_clean_file_has_no_invalid(tmp_store):
+    api = desktop.Api()
+    p = _write_xlsx(tmp_store / "ok.xlsx", qh_excel_frame(200))
+    pv = api.preview_upload(str(p), "QH", "Data")
+    assert pv["ok"] and pv["n_invalid"] == 0
+
+
 def test_build_page_inlines_plotly():
     page = desktop.build_page()
     assert "<!--PLOTLY_JS-->" not in page and "Plotly" in page

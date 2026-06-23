@@ -39,7 +39,7 @@
   .sld .v{float:right;color:var(--accent)}
   .file{font-size:11px;color:var(--muted);margin-top:6px;word-break:break-all}
   /* main */
-  .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .main{flex:1;display:flex;flex-direction:column;overflow-y:auto;min-width:0}
   .status{padding:8px 14px;border-bottom:1px solid var(--border);background:var(--panel);font-size:12px;color:var(--muted);
     display:flex;justify-content:space-between;align-items:center;min-height:36px}
   .status.err{color:var(--resistance)} .status.ok{color:var(--support)}
@@ -53,8 +53,8 @@
   .card.resistance{border-left:3px solid var(--resistance)} .card.resistance .val{color:var(--resistance)}
   .card.price{border-left:3px solid var(--warn)} .card.price .val{color:var(--warn)}
   .cards.hidden{display:none}
-  #chart{flex:1;min-height:0;overflow:auto}
-  .table-wrap{height:34%;overflow:auto;border-top:1px solid var(--border);background:var(--panel)}
+  #chart{flex:1 1 auto;min-height:280px;overflow:auto}
+  .table-wrap{flex:0 0 auto;height:32%;min-height:130px;max-height:42%;overflow:auto;border-top:1px solid var(--border);background:var(--panel)}
   table{width:100%;border-collapse:collapse;font-size:12px}
   th,td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--panel2);white-space:nowrap}
   th{position:sticky;top:0;background:var(--panel2);cursor:pointer;color:var(--muted);font-weight:600;text-align:right}
@@ -63,12 +63,28 @@
   td.side-resistance{color:var(--resistance);font-weight:700;text-align:left}
   tr:hover td{background:var(--panel2)}
   .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px}
-  details{padding:10px 16px;border-top:1px solid var(--border)}
+  details{padding:10px 16px;border-top:1px solid var(--border);max-height:32%;overflow:auto}
   summary{cursor:pointer;color:var(--muted)}
   .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--muted);border-top-color:var(--accent);
     border-radius:50%;animation:s .7s linear infinite;vertical-align:middle;margin-right:6px}
   @keyframes s{to{transform:rotate(360deg)}}
   .empty{padding:40px;text-align:center;color:var(--muted)}
+  /* modal (invalid-OHLC review) */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;
+    justify-content:center;z-index:1000;padding:20px}
+  .modal-overlay.hidden{display:none}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:10px;width:780px;max-width:94vw;
+    max-height:88vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.55)}
+  .modal-head{padding:14px 18px;border-bottom:1px solid var(--border);font-size:15px;font-weight:600;
+    display:flex;justify-content:space-between;align-items:center}
+  .modal-head .muted{color:var(--muted);font-size:12px;font-weight:400}
+  .modal-sub{padding:10px 18px;color:var(--muted);font-size:12px;border-bottom:1px solid var(--border)}
+  .modal-tools{padding:8px 18px;display:flex;gap:8px}
+  .modal-tools button{width:auto;margin:0}
+  .modal-body{overflow:auto;flex:1 1 auto;min-height:80px}
+  .modal-body td.prob{color:var(--warn);text-align:left;white-space:normal}
+  .modal-foot{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px}
+  .modal-foot button{width:auto;margin:0;padding:9px 18px}
 </style>
 </head>
 <body>
@@ -129,9 +145,27 @@
   </section>
 </div>
 
+<div class="modal-overlay hidden" id="invalidModal">
+  <div class="modal">
+    <div class="modal-head"><span>⚠ Invalid OHLC rows</span><span class="muted" id="invalidCount"></span></div>
+    <div class="modal-sub">These bars fail logical checks (High ≥ Low, High ≥ max(Open,Close), Low ≤ min(Open,Close)).
+      Tick the rows you want to <b>keep</b>; unticked rows are removed before saving.</div>
+    <div class="modal-tools">
+      <button id="invKeepAll">Keep all</button>
+      <button id="invRemoveAll">Remove all</button>
+    </div>
+    <div class="modal-body"><table id="invalidTable"><thead></thead><tbody></tbody></table></div>
+    <div class="modal-foot">
+      <button id="invCancel">Cancel</button>
+      <button id="invApply" class="primary">Apply &amp; update</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let API = null;
 let pickedPath = null;
+let pendingToken = null;
 let lastZones = [], zoneSort = {key:'score', dir:-1};
 
 function $(id){return document.getElementById(id)}
@@ -173,17 +207,50 @@ async function pickFile(){
   setStatus('File selected. Set the instrument name, then “Update master data”.');
 }
 
-async function updateMaster(){
+async function startUpdate(){
   if(!pickedPath){setStatus('Pick an Excel file first.', 'err');return;}
   const inst = $('instName').value.trim();
   if(!inst){setStatus('Enter an instrument name.', 'err');return;}
+  busy('Checking data…');
+  const sheet = $('sheetName').value.trim() || 'Data';
+  const pv = await API.preview_upload(pickedPath, inst, sheet);
+  if(!pv.ok){setStatus('Update failed: '+pv.error, 'err');return;}
+  if(pv.n_invalid > 0){ openInvalidDialog(pv); }
+  else { await commitUpload(pv.token); }
+}
+
+function openInvalidDialog(pv){
+  pendingToken = pv.token;
+  $('invalidCount').textContent = `${pv.n_invalid} invalid of ${pv.n_total} rows`;
+  $('invalidTable').tHead.innerHTML = '<tr>'+['Keep','Datetime','Open','High','Low','Close','Problem']
+    .map(c=>`<th>${c}</th>`).join('')+'</tr>';
+  $('invalidTable').tBodies[0].innerHTML = pv.invalid_rows.map(r=>`<tr>
+    <td><input type="checkbox" class="inv-keep" data-key="${encodeURIComponent(r.key)}"></td>
+    <td>${r.datetime}</td><td>${fmtNum(r.open)}</td><td>${fmtNum(r.high)}</td>
+    <td>${fmtNum(r.low)}</td><td>${fmtNum(r.close)}</td><td class="prob">${r.reason}</td></tr>`).join('');
+  $('invalidModal').classList.remove('hidden');
+  setStatus(`Review ${pv.n_invalid} invalid row(s): keep or remove.`);
+}
+
+function closeInvalidDialog(){ $('invalidModal').classList.add('hidden'); }
+
+async function applyInvalid(){
+  const keep = [...document.querySelectorAll('.inv-keep:checked')].map(c=>decodeURIComponent(c.dataset.key));
+  const token = pendingToken; pendingToken = null;
+  closeInvalidDialog();
+  await commitUpload(token, keep);
+}
+
+async function commitUpload(token, keep){
   busy('Updating master data…');
-  const res = await API.update_master(pickedPath, inst, $('sheetName').value.trim() || 'Data');
+  const res = await API.commit_upload(token, keep || []);
   if(!res.ok){setStatus('Update failed: '+res.error, 'err');return;}
   const s = res.stats;
-  let warn = s.rows_dropped_bad>0 ? `  ⚠ ${s.rows_dropped_bad} rows dropped (bad dates or invalid OHLC)` : '';
-  setStatus(`Updated <b>${inst}</b>: +${s.net_new_rows} new rows (now ${s.master_rows_after}).`+warn, 'ok');
-  await refreshInstruments(inst);
+  let extra = '';
+  if(s.invalid_removed) extra += `  ·  ${s.invalid_removed} invalid removed`;
+  if(s.invalid_kept)    extra += `  ·  ${s.invalid_kept} invalid kept`;
+  setStatus(`Updated <b>${s.instrument}</b>: +${s.net_new_rows} new rows (now ${s.master_rows_after}).`+extra, 'ok');
+  await refreshInstruments(s.instrument);
 }
 
 async function deleteMaster(){
@@ -270,9 +337,21 @@ async function runSR(){
 function init(){
   API = window.pywebview.api;
   $('btnPick').onclick = pickFile;
-  $('btnUpdate').onclick = updateMaster;
+  $('btnUpdate').onclick = startUpdate;
   $('btnDelete').onclick = deleteMaster;
   $('btnRun').onclick = runSR;
+  $('invKeepAll').onclick = ()=> document.querySelectorAll('.inv-keep').forEach(c=>c.checked=true);
+  $('invRemoveAll').onclick = ()=> document.querySelectorAll('.inv-keep').forEach(c=>c.checked=false);
+  $('invApply').onclick = applyInvalid;
+  $('invCancel').onclick = closeInvalidDialog;
+
+  // Keep the chart sized to its container at any window/display size (crisp, no crop).
+  const chartEl = $('chart');
+  if(window.ResizeObserver){
+    new ResizeObserver(()=>{ if(chartEl.querySelector('.plotly')){ try{ Plotly.Plots.resize(chartEl); }catch(e){} } })
+      .observe(chartEl);
+  }
+
   refreshInstruments().then(list=>{
     if(list.length) setStatus(`${list.length} instrument(s) loaded. Pick one and Run.`);
     else setStatus('No data yet — select an Excel file to begin.');

@@ -71,6 +71,8 @@ def _resolve_data_dir() -> Path:
 class Api:
     def __init__(self):
         self._window = None
+        self._pending = {}      # token -> parsed upload awaiting a keep/remove decision
+        self._token_seq = 0
 
     def set_window(self, window):
         self._window = window
@@ -91,8 +93,58 @@ class Api:
         return {"path": path, "instrument": engine.clean_instrument_name(os.path.basename(path))}
 
     def update_master(self, path, instrument, sheet="Data"):
+        """One-shot ingest (drops invalid OHLC). Kept for back-compat; the UI now
+        uses preview_upload + commit_upload so invalid rows can be reviewed."""
         try:
             stats = storage.ingest_excel(path, str(instrument).strip(), sheet or "Data")
+            return {"ok": True, "stats": _jsonsafe(stats), "instruments": storage.list_instruments()}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": str(exc), "trace": traceback.format_exc()}
+
+    def preview_upload(self, path, instrument, sheet="Data"):
+        """Parse the file and report any OHLC-invalid rows WITHOUT writing to the
+        master, so the user can decide per-row whether to keep or remove them."""
+        try:
+            instrument = str(instrument).strip()
+            raw = storage.read_upload(path, sheet or "Data")
+            n_total = int(len(raw))
+            valid, invalid = engine.normalize_ohlcv_split(raw, instrument)
+            self._token_seq += 1
+            token = f"up{self._token_seq}"
+            self._pending[token] = {"instrument": instrument, "valid": valid,
+                                    "invalid": invalid, "n_total": n_total}
+            invalid_rows = [{
+                "key": str(r["datetime"]), "datetime": str(r["datetime"]),
+                "open": float(r["open"]), "high": float(r["high"]),
+                "low": float(r["low"]), "close": float(r["close"]),
+                "reason": engine.ohlc_invalid_reason(r),
+            } for _, r in invalid.iterrows()]
+            return {"ok": True, "token": token, "instrument": instrument, "n_total": n_total,
+                    "n_valid": int(len(valid)), "n_invalid": int(len(invalid)),
+                    "n_parse_dropped": int(n_total - len(valid) - len(invalid)),
+                    "invalid_rows": invalid_rows}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": str(exc), "trace": traceback.format_exc()}
+
+    def commit_upload(self, token, keep_keys=None):
+        """Finish an upload started by preview_upload, keeping only the invalid rows
+        whose keys the user chose to keep."""
+        try:
+            p = self._pending.pop(token, None)
+            if p is None:
+                return {"ok": False, "error": "Upload session expired — please re-select the file."}
+            keep = set(keep_keys or [])
+            invalid = p["invalid"]
+            kept = invalid[invalid["datetime"].astype(str).isin(keep)] if (keep and not invalid.empty) else invalid.iloc[0:0]
+            combined = pd.concat([p["valid"], kept], ignore_index=True)
+            combined = (combined.sort_values(["instrument", "datetime"])
+                        .drop_duplicates(["instrument", "datetime"], keep="last").reset_index(drop=True))
+            _, stats = storage.merge_into_master(combined, p["instrument"])
+            removed = int(len(invalid) - len(kept))
+            stats["rows_in_file"] = int(p["n_total"])
+            stats["invalid_kept"] = int(len(kept))
+            stats["invalid_removed"] = removed
+            stats["rows_dropped_bad"] = int(p["n_total"] - len(p["valid"]) - len(invalid)) + removed
             return {"ok": True, "stats": _jsonsafe(stats), "instruments": storage.list_instruments()}
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc), "trace": traceback.format_exc()}
@@ -141,8 +193,27 @@ def build_page() -> str:
     return html.replace("<!--PLOTLY_JS-->", charting.plotlyjs_script())
 
 
+def _enable_dpi_awareness():
+    """Tell Windows this process handles its own scaling, so the window is rendered
+    crisply (not bitmap-stretched/blurred) on high-DPI or fractionally-scaled displays."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    for attempt in (
+        lambda: ctypes.windll.shcore.SetProcessDpiAwareness(2),  # per-monitor v2
+        lambda: ctypes.windll.user32.SetProcessDPIAware(),       # system DPI fallback
+    ):
+        try:
+            attempt()
+            return
+        except Exception:
+            continue
+
+
 def main():
     storage.set_base_dir(_resolve_data_dir())
+    _enable_dpi_awareness()
     try:
         import webview
     except Exception:  # pywebview missing -> browser fallback

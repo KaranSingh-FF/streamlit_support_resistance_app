@@ -62,12 +62,12 @@ def clean_instrument_name(file_name: str) -> str:
 # ---------------------------------------------------------------------------
 # Normalization
 # ---------------------------------------------------------------------------
-def normalize_ohlcv(df: pd.DataFrame, instrument: str) -> pd.DataFrame:
-    """Normalize a raw QH-format (or lowercase OHLCV) frame to a clean schema.
+def _parse_ohlcv(df: pd.DataFrame, instrument: str) -> pd.DataFrame:
+    """Parse a raw QH-format (or lowercase OHLCV) frame to the clean schema and drop
+    rows whose date/OHLC cannot be parsed. Does NOT apply OHLC logical checks or
+    dedup — callers (normalize_ohlcv / normalize_ohlcv_split) decide that.
 
-    Returns columns: datetime, open, high, low, close, volume, [buy/sell volume],
-    instrument. Rows whose date or OHLC cannot be parsed are dropped (the caller
-    is expected to report how many were lost).
+    Returns columns: datetime, open, high, low, close, volume, [buy/sell volume], instrument.
     """
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
@@ -114,20 +114,50 @@ def normalize_ohlcv(df: pd.DataFrame, instrument: str) -> pd.DataFrame:
         out["sell_volume"] = pd.to_numeric(df[col_map["sell_volume"]], errors="coerce")
 
     out["instrument"] = instrument
-    out = out.dropna(subset=["datetime", "open", "high", "low", "close"])
+    return out.dropna(subset=["datetime", "open", "high", "low", "close"])
 
-    # OHLC logical sanity: high must be the bar's max and low its min. Drop bars
-    # that violate this (e.g. High < Low, High < Close, Low > Open) so corrupt
-    # candles never reach the master or the S/R engine. (Works for negative prices:
-    # zero-range bars where O=H=L=C are valid.)
+
+def ohlc_invalid_mask(out: pd.DataFrame) -> pd.Series:
+    """True for bars that violate OHLC logic: High must be the bar's max and Low its
+    min (High>=Low, High>=max(O,C), Low<=min(O,C)). Negative-price and zero-range
+    bars are valid."""
     hi, lo = out["high"], out["low"]
     oc_max = out[["open", "close"]].max(axis=1)
     oc_min = out[["open", "close"]].min(axis=1)
-    valid = (hi >= lo) & (hi >= oc_max) & (lo <= oc_min)
-    out = out[valid]
+    return ~((hi >= lo) & (hi >= oc_max) & (lo <= oc_min))
 
-    out = out.sort_values(["instrument", "datetime"]).drop_duplicates(["instrument", "datetime"], keep="last")
-    return out.reset_index(drop=True)
+
+def ohlc_invalid_reason(row) -> str:
+    """Human-readable explanation of why a bar fails the OHLC checks."""
+    o, h, l, c = float(row["open"]), float(row["high"]), float(row["low"]), float(row["close"])
+    rs = []
+    if h < l:
+        rs.append("High < Low")
+    if h < max(o, c):
+        rs.append("High < " + ("Open" if o >= c else "Close"))
+    if l > min(o, c):
+        rs.append("Low > " + ("Open" if o <= c else "Close"))
+    return "; ".join(rs) or "invalid OHLC"
+
+
+def _finalize_frame(out: pd.DataFrame) -> pd.DataFrame:
+    return (out.sort_values(["instrument", "datetime"])
+               .drop_duplicates(["instrument", "datetime"], keep="last")
+               .reset_index(drop=True))
+
+
+def normalize_ohlcv(df: pd.DataFrame, instrument: str) -> pd.DataFrame:
+    """Normalize a raw frame and drop OHLC-invalid bars (the non-interactive path)."""
+    out = _parse_ohlcv(df, instrument)
+    return _finalize_frame(out[~ohlc_invalid_mask(out)])
+
+
+def normalize_ohlcv_split(df: pd.DataFrame, instrument: str):
+    """Parse a raw frame and return (valid, invalid) OHLC bars separately, so a UI
+    can ask the user whether to keep or remove the invalid ones."""
+    out = _parse_ohlcv(df, instrument)
+    bad = ohlc_invalid_mask(out)
+    return _finalize_frame(out[~bad]), _finalize_frame(out[bad])
 
 
 # ---------------------------------------------------------------------------

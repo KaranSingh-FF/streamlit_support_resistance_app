@@ -159,6 +159,15 @@ def merge_into_master(new_df: pd.DataFrame, instrument: str) -> tuple[pd.DataFra
     return combined, stats
 
 
+def read_upload(file_path, sheet_name: str = "Data") -> pd.DataFrame:
+    """Read an uploaded Excel file, falling back to the first sheet if the named
+    sheet is absent."""
+    try:
+        return read_excel_any(file_path, sheet_name=sheet_name)
+    except Exception:
+        return read_excel_any(file_path, sheet_name=None)
+
+
 def ingest_excel(file_path, instrument: str, sheet_name: str = "Data") -> dict:
     """Read an Excel file, normalize, and merge into the instrument's master.
 
