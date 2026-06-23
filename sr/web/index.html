@@ -51,6 +51,7 @@
   .card.support{border-left:3px solid var(--support)} .card.support .val{color:var(--support)}
   .card.resistance{border-left:3px solid var(--resistance)} .card.resistance .val{color:var(--resistance)}
   .card.price{border-left:3px solid var(--warn)} .card.price .val{color:var(--warn)}
+  .card.current{border-left:3px solid var(--accent)} .card.current .val{color:var(--accent)}
   .cards.hidden{display:none}
   .atrbar{padding:5px 14px;background:var(--panel);border-bottom:1px solid var(--border);
     font-size:12px;color:var(--muted)}
@@ -325,12 +326,13 @@ function fmtNum(v){return typeof v==='number' ? (Math.abs(v)<100? v.toFixed(4): 
 function renderSummary(s){
   const cards = $('cards');
   if(!s || s.current_price==null){cards.className='cards hidden';cards.innerHTML='';return;}
-  const sup = s.nearest_support, res = s.nearest_resistance;
+  const sup = s.nearest_support, res = s.nearest_resistance, cur = s.current_zone;
   const atr = v => v==null?'—':Number(v).toFixed(2);
   const card = (cls,k,val,sub)=>`<div class="card ${cls}"><div class="k">${k}</div><div class="val">${val}</div><div class="sub">${sub||''}</div></div>`;
   cards.className='cards';
   cards.innerHTML =
     card('price','Current price', fmtPrice(s.current_price), `${s.n_support} support · ${s.n_resistance} resistance`) +
+    (cur ? card('current','Inside zone', `${fmtPrice(cur.low)}–${fmtPrice(cur.high)}`, `price is inside this ${cur.side} zone · score ${cur.score}`) : '') +
     card('support','Nearest support', sup? fmtPrice(sup.center):'—', sup? `${atr(sup.distance_atr)} ATR away · score ${sup.score}`:'none') +
     card('resistance','Nearest resistance', res? fmtPrice(res.center):'—', res? `${atr(res.distance_atr)} ATR away · score ${res.score}`:'none');
 }

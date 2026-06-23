@@ -290,21 +290,31 @@ def score_and_merge(zones_df: pd.DataFrame, timeframe_weights: dict, min_score: 
 
     final = []
     for (inst, side), g in d.sort_values("zone_center").groupby(["instrument", "side"]):
-        g = g.sort_values("zone_center").reset_index(drop=True)
+        # Sort by zone_low (not center): the greedy running-max-high overlap sweep
+        # below is only correct when intervals are visited in start-edge order.
+        g = g.sort_values("zone_low").reset_index(drop=True)
         median_atr = g["atr"].median()
         if pd.isna(median_atr) or median_atr == 0:
             median_atr = 0.01
         merge_width = cluster_atr_multiplier * median_atr
         clusters = []
         cur = [g.iloc[0].to_dict()]
+        cur_high = cur[0]["zone_high"]
         for i in range(1, len(g)):
             row = g.iloc[i].to_dict()
             center = np.average([x["zone_center"] for x in cur], weights=[max(x["base_score"], 0.1) for x in cur])
-            if abs(row["zone_center"] - center) <= merge_width:
+            # Merge if centers are close OR the ranges already overlap. The overlap
+            # test is the real fix for stacked, unreadable bands: zone width is set
+            # per-timeframe, so a wide higher-TF zone can overlap a neighbour whose
+            # center sits beyond merge_width (which uses a single per-side median ATR).
+            # g is sorted by zone_low, so row.zone_low <= running max high == overlap.
+            if abs(row["zone_center"] - center) <= merge_width or row["zone_low"] <= cur_high:
                 cur.append(row)
+                cur_high = max(cur_high, row["zone_high"])
             else:
                 clusters.append(cur)
                 cur = [row]
+                cur_high = row["zone_high"]
         clusters.append(cur)
 
         for cl in clusters:
@@ -343,6 +353,7 @@ def score_and_merge(zones_df: pd.DataFrame, timeframe_weights: dict, min_score: 
                 "timeframe_count": len(tfs),
                 "last_touch": max(x["last_touch"] for x in cl),
                 "current_price": current_price,
+                "current_atr": current_atr,   # kept so the cards can measure edge-distance in ATR
                 "distance_atr": round(abs(center - current_price) / current_atr, 2) if current_atr else np.nan,
             })
 

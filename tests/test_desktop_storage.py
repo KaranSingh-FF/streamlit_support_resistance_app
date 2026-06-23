@@ -1,6 +1,7 @@
 """Desktop API + storage tests, including the strict-JSON HTTP-bridge contract."""
 import io
 import json
+import os
 
 import numpy as np
 import pandas as pd
@@ -195,3 +196,14 @@ def test_pending_dict_is_bounded(tmp_store):
 
 def test_selftest_passes():
     assert desktop.selftest(verbose=False) is True
+
+
+def test_app_window_cmd_is_chromeless_and_trackable():
+    """The desktop window must launch Chromium in app mode with its own profile
+    (so closing it quits the app). Skips where no Edge/Chrome is installed."""
+    cmd = desktop._app_window_cmd("http://127.0.0.1:5000/")
+    if cmd is None:
+        pytest.skip("no Edge/Chrome installed on this machine")
+    assert os.path.isfile(cmd[0])                              # a real browser exe
+    assert "--app=http://127.0.0.1:5000/" in cmd               # chromeless app window
+    assert any(a.startswith("--user-data-dir=") for a in cmd)  # own process -> trackable lifetime

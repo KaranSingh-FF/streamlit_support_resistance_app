@@ -48,6 +48,10 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, [], exclude_binaries=True,
     name="SR-Terminal",
-    console=True,   # console shows the local URL and acts as the quit control
+    # Windowed: no console — the UI opens as a chromeless desktop window (Edge/Chrome
+    # app mode) and closing it quits the app. run_desktop._ensure_streams() redirects
+    # stdout/stderr (None in a windowed build) to sr_data_store/sr_terminal.log so
+    # print() can't crash the app and startup errors stay diagnosable.
+    console=False,
 )
 coll = COLLECT(exe, a.binaries, a.datas, name="SR-Terminal")

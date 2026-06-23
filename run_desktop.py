@@ -11,7 +11,29 @@ on the built binary, e.g.  SR-Terminal.exe --selftest
 import sys
 
 
+def _ensure_streams():
+    """A windowed (console=False) PyInstaller build has sys.stdout/stderr == None, so
+    any print() would raise and crash the app at launch. Point them at a per-session
+    log file beside the data store (truncated each run) so output has somewhere to go
+    and startup failures stay diagnosable."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    try:
+        from sr.desktop import _resolve_data_dir
+        log_dir = _resolve_data_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        sink = open(log_dir / "sr_terminal.log", "w", buffering=1, encoding="utf-8")
+    except Exception:
+        import os
+        sink = open(os.devnull, "w")
+    if sys.stdout is None:
+        sys.stdout = sink
+    if sys.stderr is None:
+        sys.stderr = sink
+
+
 def _main():
+    _ensure_streams()
     args = sys.argv[1:]
     if "--version" in args:
         import sr

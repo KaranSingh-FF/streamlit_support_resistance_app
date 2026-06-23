@@ -69,17 +69,37 @@ def test_summarize_nearest_sides():
             assert s["nearest_resistance"]["center"] >= cp - 1e-9
 
 
-def test_summary_nearest_is_the_global_nearest_level():
-    # On a descending series the naive (swing-type) logic picked the wrong card.
+def test_summary_nearest_uses_edges_and_excludes_current_zone():
+    # Nearest cards measure to the zone EDGE and skip any zone the price sits inside
+    # (that one is reported separately as current_zone, not as "0.00 ATR away").
     fz = engine.compute_sr(descending(), engine.SRConfig(timeframes=["1h", "4h", "1D"]))[0]
     s = charting.summarize_zones(fz)
     cp = s["current_price"]
-    above = fz[fz.zone_center > cp].sort_values("zone_center")
-    below = fz[fz.zone_center < cp].sort_values("zone_center")
-    if not above.empty and s["nearest_resistance"]:
-        assert abs(s["nearest_resistance"]["center"] - float(above.iloc[0]["zone_center"])) < 1e-9
-    if not below.empty and s["nearest_support"]:
-        assert abs(s["nearest_support"]["center"] - float(below.iloc[-1]["zone_center"])) < 1e-9
+    below = fz[fz.zone_high < cp]   # fully below the price
+    above = fz[fz.zone_low > cp]    # fully above the price
+    if s["nearest_support"]:
+        assert s["nearest_support"]["high"] < cp + 1e-9
+        assert abs(s["nearest_support"]["high"] - float(below["zone_high"].max())) < 1e-9
+    if s["nearest_resistance"]:
+        assert s["nearest_resistance"]["low"] > cp - 1e-9
+        assert abs(s["nearest_resistance"]["low"] - float(above["zone_low"].min())) < 1e-9
+    if s["current_zone"]:  # if the price is inside a zone, it is flagged, not "nearest"
+        assert s["current_zone"]["low"] <= cp <= s["current_zone"]["high"]
+
+
+def test_summary_current_zone_excluded_from_nearest():
+    # Price sits inside a support zone; that zone must NOT be the nearest support.
+    cp, ts = 5.0, pd.Timestamp("2026-01-01")
+    rows = [(4.98, 4.90, 5.10), (4.40, 4.30, 4.50), (6.00, 5.90, 6.10)]  # 1st straddles cp
+    tfz = pd.DataFrame([dict(
+        instrument="X", timeframe="1h", side="support", zone_center=c, zone_low=lo,
+        zone_high=hi, touches=3, first_touch=ts, last_touch=ts, atr=0.2,
+        current_price=cp, current_atr=0.2) for c, lo, hi in rows])
+    fz = engine.score_and_merge(tfz, engine.DEFAULT_TIMEFRAME_WEIGHTS, 0.0, 1e9, 0.05)
+    s = charting.summarize_zones(fz)
+    assert s["current_zone"] is not None and s["current_zone"]["low"] <= cp <= s["current_zone"]["high"]
+    assert s["nearest_support"]["high"] < cp        # the 4.30–4.50 zone, not the straddling one
+    assert s["nearest_support"]["distance_atr"] > 0  # real edge distance, never 0
 
 
 def test_zones_to_records_empty():

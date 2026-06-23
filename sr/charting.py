@@ -81,46 +81,14 @@ def build_sr_figure(tf_data: dict, final_zones: pd.DataFrame, instrument: str, l
 
     for i, tf in enumerate(timeframes, start=1):
         d = tf_data[tf].tail(lookback).copy()
-        fig.add_trace(
-            go.Candlestick(
-                x=d["datetime"], open=d["open"], high=d["high"], low=d["low"], close=d["close"],
-                name=tf, increasing_line_color=UP_COLOR, decreasing_line_color=DOWN_COLOR,
-                increasing_fillcolor=UP_COLOR, decreasing_fillcolor=DOWN_COLOR,
-                showlegend=False, whiskerwidth=0.3, line_width=1,
-            ),
-            row=i, col=1,
-        )
         y_lo = min(y_lo, float(d["low"].min()))
         y_hi = max(y_hi, float(d["high"].max()))
         current_price = float(d["close"].iloc[-1])
         x0, x1 = d["datetime"].iloc[0], d["datetime"].iloc[-1]
 
-        # swing markers (where levels come from)
-        if "swing_high" in d.columns:
-            sh = d[d["swing_high"]]
-            if len(sh):
-                fig.add_trace(go.Scatter(
-                    x=sh["datetime"], y=sh["high"], mode="markers", name="Swing High",
-                    legendgroup="swing_high", showlegend=first("swing_high"),
-                    marker=dict(symbol="triangle-down", size=7, color=RESISTANCE_COLOR,
-                                line=dict(width=0.5, color="#000")),
-                    hovertemplate="swing high %{y:.4f}<extra></extra>",
-                ), row=i, col=1)
-        if "swing_low" in d.columns:
-            sl = d[d["swing_low"]]
-            if len(sl):
-                fig.add_trace(go.Scatter(
-                    x=sl["datetime"], y=sl["low"], mode="markers", name="Swing Low",
-                    legendgroup="swing_low", showlegend=first("swing_low"),
-                    marker=dict(symbol="triangle-up", size=7, color=SUPPORT_COLOR,
-                                line=dict(width=0.5, color="#000")),
-                    hovertemplate="swing low %{y:.4f}<extra></extra>",
-                ), row=i, col=1)
-
-        # current price line
-        fig.add_hline(y=current_price, line=dict(color=PRICE_LINE_COLOR, width=1, dash="dot"), row=i, col=1)
-
-        # S/R zones as legend-toggleable filled bands (hover anywhere on the band)
+        # S/R zones FIRST, so the candlesticks (added below) draw ON TOP of the
+        # bands. Plotly renders traces in add-order; bands added last would bury
+        # the candles — which is what made the 15min panel unreadable.
         if not zones.empty:
             for _, z in zones.iterrows():
                 side = z["side"]
@@ -144,6 +112,41 @@ def build_sr_figure(tf_data: dict, final_zones: pd.DataFrame, instrument: str, l
                           f"distance: {z['distance_atr']} ATR"),
                     hoverlabel=dict(bgcolor="#10151f", bordercolor=color),
                 ), row=i, col=1)
+
+        fig.add_trace(
+            go.Candlestick(
+                x=d["datetime"], open=d["open"], high=d["high"], low=d["low"], close=d["close"],
+                name=tf, increasing_line_color=UP_COLOR, decreasing_line_color=DOWN_COLOR,
+                increasing_fillcolor=UP_COLOR, decreasing_fillcolor=DOWN_COLOR,
+                showlegend=False, whiskerwidth=0.3, line_width=1,
+            ),
+            row=i, col=1,
+        )
+
+        # swing markers (where levels come from)
+        if "swing_high" in d.columns:
+            sh = d[d["swing_high"]]
+            if len(sh):
+                fig.add_trace(go.Scatter(
+                    x=sh["datetime"], y=sh["high"], mode="markers", name="Swing High",
+                    legendgroup="swing_high", showlegend=first("swing_high"),
+                    marker=dict(symbol="triangle-down", size=7, color=RESISTANCE_COLOR,
+                                line=dict(width=0.5, color="#000")),
+                    hovertemplate="swing high %{y:.4f}<extra></extra>",
+                ), row=i, col=1)
+        if "swing_low" in d.columns:
+            sl = d[d["swing_low"]]
+            if len(sl):
+                fig.add_trace(go.Scatter(
+                    x=sl["datetime"], y=sl["low"], mode="markers", name="Swing Low",
+                    legendgroup="swing_low", showlegend=first("swing_low"),
+                    marker=dict(symbol="triangle-up", size=7, color=SUPPORT_COLOR,
+                                line=dict(width=0.5, color="#000")),
+                    hovertemplate="swing low %{y:.4f}<extra></extra>",
+                ), row=i, col=1)
+
+        # current price line (a layout shape — always drawn above the traces)
+        fig.add_hline(y=current_price, line=dict(color=PRICE_LINE_COLOR, width=1, dash="dot"), row=i, col=1)
 
     # zone labels on the right edge of the top panel (shared price axis)
     if not zones.empty:
@@ -191,27 +194,50 @@ def build_sr_figure(tf_data: dict, final_zones: pd.DataFrame, instrument: str, l
 
 
 def summarize_zones(final_zones: pd.DataFrame) -> dict:
-    """Headline numbers for the UI cards: current price + nearest S/R."""
+    """Headline numbers for the UI cards: current price, the zone the price is
+    currently *inside* (if any), and the nearest actionable S/R above/below.
+
+    Distance is measured to the zone's near EDGE, not its center: nearest support
+    is ``price - zone_high``, nearest resistance is ``zone_low - price``. A zone
+    that straddles the price (zone_low <= price <= zone_high) is not actionable as
+    support or resistance — it is reported separately as ``current_zone`` and
+    excluded from the nearest cards (otherwise it shows "0.00 ATR away")."""
     if final_zones is None or final_zones.empty:
         return {"current_price": None, "nearest_support": None, "nearest_resistance": None,
-                "n_support": 0, "n_resistance": 0}
+                "current_zone": None, "n_support": 0, "n_resistance": 0}
     cp = float(final_zones["current_price"].iloc[0])
+    atr = (float(final_zones["current_atr"].iloc[0]) if "current_atr" in final_zones.columns
+           and pd.notna(final_zones["current_atr"].iloc[0]) else None)
 
-    # `side` is price-relative (support below price, resistance above), so the nearest
-    # of each side is simply the closest zone of that side to the current price.
-    def nearest(side):
-        g = final_zones[final_zones["side"] == side]
-        if g.empty:
-            return None
-        row = g.iloc[(g["zone_center"] - cp).abs().argmin()]
+    inside = (final_zones["zone_low"] <= cp) & (final_zones["zone_high"] >= cp)
+
+    def pack(row, gap):  # gap = price-distance to the zone's near edge
         return {"center": float(row["zone_center"]), "low": float(row["zone_low"]),
                 "high": float(row["zone_high"]), "score": float(row["score"]),
-                "distance_atr": float(row["distance_atr"]) if pd.notna(row["distance_atr"]) else None}
+                "distance_atr": round(gap / atr, 2) if atr else None}
+
+    cur = final_zones[inside]
+    current_zone = None
+    if not cur.empty:
+        row = cur.iloc[cur["score"].argmax()]   # if price sits in several, show the strongest
+        current_zone = {"center": float(row["zone_center"]), "low": float(row["zone_low"]),
+                        "high": float(row["zone_high"]), "score": float(row["score"]),
+                        "side": str(row["side"])}
+
+    # nearest support: zone fully below price, with the highest top edge
+    sup = final_zones[~inside & (final_zones["zone_high"] < cp)]
+    nearest_support = (pack(r := sup.iloc[sup["zone_high"].argmax()], cp - float(r["zone_high"]))
+                       if not sup.empty else None)
+    # nearest resistance: zone fully above price, with the lowest bottom edge
+    res = final_zones[~inside & (final_zones["zone_low"] > cp)]
+    nearest_resistance = (pack(r := res.iloc[res["zone_low"].argmin()], float(r["zone_low"]) - cp)
+                          if not res.empty else None)
 
     return {
         "current_price": cp,
-        "nearest_support": nearest("support"),
-        "nearest_resistance": nearest("resistance"),
+        "nearest_support": nearest_support,
+        "nearest_resistance": nearest_resistance,
+        "current_zone": current_zone,
         "n_support": int((final_zones["side"] == "support").sum()),
         "n_resistance": int((final_zones["side"] == "resistance").sum()),
     }

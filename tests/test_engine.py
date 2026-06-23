@@ -144,6 +144,27 @@ def test_score_empty():
     assert engine.score_and_merge(pd.DataFrame(), engine.DEFAULT_TIMEFRAME_WEIGHTS, 3, 10, 0.35).empty
 
 
+def test_overlapping_same_side_zones_merge():
+    """Same-side zones whose [low, high] ranges overlap must collapse into ONE, even
+    when a wide zone's center-order differs from its low-edge order. This guards the
+    merge sort invariant: A[9.9,10.1] does not overlap B[10.4,10.6], but wide
+    C[9.8,11.0] spans both. Visiting in center order (A,B,C) wrongly closes A before
+    C arrives, leaving A overlapping the B+C zone; visiting in low-edge order merges
+    all three. (Regression for the stacked-bands bug.)"""
+    cp, ts = 5.0, pd.Timestamp("2026-01-01")
+    rows = [(10.0, 9.9, 10.1), (10.5, 10.4, 10.6), (10.6, 9.8, 11.0)]
+    tfz = pd.DataFrame([dict(
+        instrument="X", timeframe="1h", side="resistance", zone_center=c, zone_low=lo,
+        zone_high=hi, touches=2, first_touch=ts, last_touch=ts, atr=1.0,
+        current_price=cp, current_atr=1.0) for c, lo, hi in rows])
+    # merge_width = 0.35 * 1.0 = 0.35 < the 0.5 center gap A->B, so ONLY overlap merges them
+    out = engine.score_and_merge(tfz, engine.DEFAULT_TIMEFRAME_WEIGHTS, 0.0, 1e9, 0.35)
+    res = out[out.side == "resistance"]
+    assert len(res) == 1, "overlapping zones must merge regardless of center vs low ordering"
+    assert res.iloc[0]["zone_low"] == 9.8 and res.iloc[0]["zone_high"] == 11.0
+    assert res.iloc[0]["touches"] == 6
+
+
 # --- run_sr edge cases ------------------------------------------------------
 def test_run_sr_empty_master():
     empty = pd.DataFrame(columns=["datetime", "open", "high", "low", "close", "volume", "instrument"])

@@ -255,6 +255,47 @@ def _free_port() -> int:
     return port
 
 
+def _find_chromium() -> "str | None":
+    """Path to an installed Edge or Chrome, or None. Edge ships with Windows 11."""
+    import shutil
+
+    candidates = [
+        os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
+        os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
+        os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+        os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+        shutil.which("msedge"), shutil.which("chrome"), shutil.which("google-chrome"),
+    ]
+    return next((c for c in candidates if c and os.path.isfile(c)), None)
+
+
+def _app_window_cmd(url: str):
+    """Chromium 'app mode' command for a chromeless, desktop-style window (no tabs or
+    address bar, own taskbar icon) — or None if no Edge/Chrome is found (the caller
+    then falls back to the default browser). A dedicated --user-data-dir guarantees a
+    NEW browser process whose lifetime tracks the window, so closing the window quits
+    the app."""
+    exe = _find_chromium()
+    if exe is None:
+        return None
+    profile = _resolve_data_dir() / "_app_window"
+    return [exe, f"--app={url}", f"--user-data-dir={profile}",
+            "--window-size=1400,900", "--no-first-run", "--no-default-browser-check"]
+
+
+def _launch_app_window(url: str):
+    """Open the UI as a desktop window; return the process handle, or None on fallback."""
+    import subprocess
+
+    cmd = _app_window_cmd(url)
+    if cmd is None:
+        return None
+    try:
+        return subprocess.Popen(cmd)
+    except Exception:
+        return None
+
+
 def main(port: int | None = None, open_browser: bool = True):
     from werkzeug.serving import make_server
 
@@ -262,19 +303,28 @@ def main(port: int | None = None, open_browser: bool = True):
     if port is None:
         port = int(os.environ.get("SR_PORT", "0")) or _free_port()
     url = f"http://127.0.0.1:{port}/"
+    server = make_server("127.0.0.1", port, create_app(), threaded=True)
 
     def _open():
-        try:
-            webbrowser.open(url)
-        except Exception:
-            print(f"  (Could not open a browser automatically — please open {url} manually.)", flush=True)
+        if os.environ.get("SR_NO_BROWSER"):
+            return
+        proc = _launch_app_window(url)
+        if proc is None:  # no Edge/Chrome -> degrade to a normal browser tab
+            try:
+                webbrowser.open(url)
+            except Exception:
+                print(f"  (Could not open a window automatically — please open {url} manually.)", flush=True)
+            return
+        proc.wait()        # block until the desktop window is closed...
+        server.shutdown()  # ...then stop the server so the app fully exits
 
-    if open_browser and not os.environ.get("SR_NO_BROWSER"):
-        threading.Timer(1.5, _open).start()
+    if open_browser:
+        t = threading.Timer(1.0, _open)
+        t.daemon = True   # don't let the watcher thread keep the process alive on Ctrl-C
+        t.start()
     print("\n  Support / Resistance Terminal")
-    print(f"  Open in your browser:  {url}")
-    print("  (Your browser should open automatically. Keep this window open; close it to quit.)\n", flush=True)
-    server = make_server("127.0.0.1", port, create_app(), threaded=True)
+    print(f"  URL (if no window opens):  {url}")
+    print("  (A desktop window should open automatically. Close it — or this window — to quit.)\n", flush=True)
     server.serve_forever()
 
 
