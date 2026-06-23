@@ -115,6 +115,17 @@ def normalize_ohlcv(df: pd.DataFrame, instrument: str) -> pd.DataFrame:
 
     out["instrument"] = instrument
     out = out.dropna(subset=["datetime", "open", "high", "low", "close"])
+
+    # OHLC logical sanity: high must be the bar's max and low its min. Drop bars
+    # that violate this (e.g. High < Low, High < Close, Low > Open) so corrupt
+    # candles never reach the master or the S/R engine. (Works for negative prices:
+    # zero-range bars where O=H=L=C are valid.)
+    hi, lo = out["high"], out["low"]
+    oc_max = out[["open", "close"]].max(axis=1)
+    oc_min = out[["open", "close"]].min(axis=1)
+    valid = (hi >= lo) & (hi >= oc_max) & (lo <= oc_min)
+    out = out[valid]
+
     out = out.sort_values(["instrument", "datetime"]).drop_duplicates(["instrument", "datetime"], keep="last")
     return out.reset_index(drop=True)
 

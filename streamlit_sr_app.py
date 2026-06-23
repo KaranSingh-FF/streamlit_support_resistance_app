@@ -80,7 +80,7 @@ if uploaded_files:
         st.success("Upload processing complete. Master data updated.")
         total_dropped = sum(r.get("rows_dropped_bad", 0) for r in stats_rows)
         if total_dropped:
-            st.warning(f"{total_dropped} row(s) dropped because their date or OHLC values could not be parsed.")
+            st.warning(f"{total_dropped} row(s) dropped: unparseable date/OHLC, or failed OHLC sanity checks (e.g. High < Low).")
         st.dataframe(pd.DataFrame(stats_rows), use_container_width=True)
 
 # ---------------------------------------------------------------------------

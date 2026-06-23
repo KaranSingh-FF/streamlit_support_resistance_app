@@ -53,7 +53,7 @@
   .card.resistance{border-left:3px solid var(--resistance)} .card.resistance .val{color:var(--resistance)}
   .card.price{border-left:3px solid var(--warn)} .card.price .val{color:var(--warn)}
   .cards.hidden{display:none}
-  #chart{flex:1;min-height:0}
+  #chart{flex:1;min-height:0;overflow:auto}
   .table-wrap{height:34%;overflow:auto;border-top:1px solid var(--border);background:var(--panel)}
   table{width:100%;border-collapse:collapse;font-size:12px}
   th,td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--panel2);white-space:nowrap}
@@ -181,7 +181,7 @@ async function updateMaster(){
   const res = await API.update_master(pickedPath, inst, $('sheetName').value.trim() || 'Data');
   if(!res.ok){setStatus('Update failed: '+res.error, 'err');return;}
   const s = res.stats;
-  let warn = s.rows_dropped_bad>0 ? `  ⚠ ${s.rows_dropped_bad} rows dropped (bad dates/values)` : '';
+  let warn = s.rows_dropped_bad>0 ? `  ⚠ ${s.rows_dropped_bad} rows dropped (bad dates or invalid OHLC)` : '';
   setStatus(`Updated <b>${inst}</b>: +${s.net_new_rows} new rows (now ${s.master_rows_after}).`+warn, 'ok');
   await refreshInstruments(inst);
 }

@@ -212,6 +212,14 @@ def selftest(verbose: bool = True) -> bool:
             check("zones produced", not final_zones.empty, f"{len(final_zones)} zones")
             check("diagnostics produced", not diag.empty)
 
+            # side must be price-relative: support below price, resistance above
+            if not final_zones.empty:
+                cp = float(final_zones["current_price"].iloc[0])
+                sup_ok = (final_zones.loc[final_zones.side == "support", "zone_center"] <= cp).all()
+                res_ok = (final_zones.loc[final_zones.side == "resistance", "zone_center"] >= cp).all()
+                check("zone sides are price-relative", bool(sup_ok and res_ok),
+                      f"support<=cp={bool(sup_ok)}, resistance>=cp={bool(res_ok)}")
+
             fig = charting.build_sr_figure(tf_data.get("SELFTEST", {}), final_zones, "SELFTEST", 300)
             check("figure has traces", len(fig.data) > 0, f"{len(fig.data)} traces")
 

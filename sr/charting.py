@@ -155,7 +155,7 @@ def build_sr_figure(tf_data: dict, final_zones: pd.DataFrame, instrument: str, l
         template="plotly_dark",
         title=dict(text=title, x=0.01, y=0.985, font=dict(size=18, color="#e6e9ef")),
         height=max(380, 320 * n + 90),
-        margin=dict(l=55, r=110, t=70, b=40),
+        margin=dict(l=55, r=110, t=70, b=64),
         hovermode="x",
         dragmode="zoom",
         paper_bgcolor=BG, plot_bgcolor=BG,

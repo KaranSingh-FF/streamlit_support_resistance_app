@@ -49,7 +49,7 @@ def test_normalize_drops_bad_dates():
 def test_normalize_dedups_within_file_keep_last():
     raw = pd.DataFrame({
         "Date": ["2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"],
-        "Open": [1, 9], "High": [2, 9], "Low": [0, 9], "Close": [1, 7],
+        "Open": [1, 9], "High": [2, 10], "Low": [0, 6], "Close": [1, 7],  # both valid OHLC
     })
     out = engine.normalize_ohlcv(raw, "X")
     assert len(out) == 1 and out["close"].iloc[0] == 7  # last wins
@@ -225,3 +225,53 @@ def test_every_zone_above_price_is_resistance():
         assert (above["side"] == "resistance").all()
     if not below.empty:
         assert (below["side"] == "support").all()
+
+
+def test_score_and_merge_overrides_swing_side_with_price_relative():
+    """Direct unit test: even when the input swing label contradicts price, the
+    output side is determined by zone_center vs current_price."""
+    cp, ts = 5.0, pd.Timestamp("2026-01-01")
+    rows = [  # (center, deliberately-wrong swing side)
+        (4.0, "support"), (4.5, "resistance"), (6.0, "support"), (7.0, "resistance")]
+    tfz = pd.DataFrame([dict(
+        instrument="X", timeframe="1h", side=s, zone_center=c, zone_low=c - 0.05,
+        zone_high=c + 0.05, touches=3, first_touch=ts, last_touch=ts, atr=0.2,
+        current_price=cp, current_atr=0.2) for c, s in rows])
+    out = engine.score_and_merge(tfz, engine.DEFAULT_TIMEFRAME_WEIGHTS,
+                                 min_score=0.0, max_distance_atr=1e9, cluster_atr_multiplier=0.05)
+    for _, z in out.iterrows():
+        if z.zone_center < cp:
+            assert z.side == "support"
+        if z.zone_center > cp:
+            assert z.side == "resistance"
+
+
+# --- OHLC sanity at ingest (#2) ---------------------------------------------
+def test_normalize_drops_invalid_ohlc():
+    raw = pd.DataFrame({
+        "Date": ["2026-01-01T00:00:00Z", "2026-01-01T00:15:00Z",
+                 "2026-01-01T00:30:00Z", "2026-01-01T00:45:00Z"],
+        "Open": [10, 10, 10, 10], "High": [8, 12, 9, 11],   # row0 H<L, row2 H<L
+        "Low": [9, 8, 10, 10], "Close": [10, 11, 10.5, 10],
+    })
+    out = engine.normalize_ohlcv(raw, "X")
+    assert len(out) == 2  # only the two logically-valid bars survive
+    ok = ((out.high >= out.low) & (out.high >= out[["open", "close"]].max(axis=1))
+          & (out.low <= out[["open", "close"]].min(axis=1)))
+    assert ok.all()
+
+
+def test_normalize_keeps_negative_and_flat_bars():
+    raw = pd.DataFrame({
+        "Date": ["2026-01-01T00:00:00Z", "2026-01-01T00:15:00Z"],
+        "Open": [-0.03, -0.02], "High": [-0.01, -0.02], "Low": [-0.05, -0.02], "Close": [-0.02, -0.02],
+    })
+    assert len(engine.normalize_ohlcv(raw, "QH")) == 2  # negative spread + zero-range bar are valid
+
+
+# --- determinism (#5) -------------------------------------------------------
+def test_engine_is_deterministic():
+    m = descending()
+    a = engine.compute_sr(m, engine.SRConfig(timeframes=["1h", "4h", "1D"]))[0]
+    b = engine.compute_sr(m, engine.SRConfig(timeframes=["1h", "4h", "1D"]))[0]
+    pd.testing.assert_frame_equal(a, b)
