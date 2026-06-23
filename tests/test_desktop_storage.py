@@ -81,11 +81,11 @@ def test_config_from_settings_empty_defaults():
 
 
 # --- desktop API ------------------------------------------------------------
-def test_api_update_and_run(tmp_store):
+def test_api_ingest_and_run(tmp_store):
     api = desktop.Api()
     p = _write_xlsx(tmp_store / "QH.xlsx", qh_excel_frame(1000))
-    upd = api.update_master(str(p), "QH", "Data")
-    assert upd["ok"] and "QH" in upd["instruments"]
+    pv = api.preview_upload(str(p), "QH", "Data")
+    assert api.commit_upload(pv["token"], [])["ok"] and "QH" in api.list_instruments()
 
     res = api.run_sr("QH", {"timeframes": ["15min", "1h", "4h", "1D"], "min_score": 3.0,
                             "max_distance_atr": 10.0, "atr_multiplier": 0.25, "lookback": 300})
@@ -95,9 +95,9 @@ def test_api_update_and_run(tmp_store):
     assert "figure" in res and "zones" in res and "summary" in res and "diagnostics" in res
 
 
-def test_api_update_bad_path_returns_error():
+def test_api_preview_bad_path_returns_error():
     api = desktop.Api()
-    res = api.update_master("does_not_exist.xlsx", "Z", "Data")
+    res = api.preview_upload("does_not_exist.xlsx", "Z", "Data")
     assert res["ok"] is False and res["error"]
 
 

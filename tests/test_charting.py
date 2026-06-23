@@ -17,7 +17,7 @@ def test_figure_builds_and_serializes():
     fz, tfd = _result()
     fig = charting.build_sr_figure(tfd, fz, "T", 300)
     assert len(fig.data) > 0
-    s = charting.figure_to_json(fig)
+    s = fig.to_json()
     json.loads(s)                       # valid JSON
     json.dumps(json.loads(s), allow_nan=False)  # strict (no NaN/Inf)
 

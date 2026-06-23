@@ -29,7 +29,6 @@
   button.danger:hover{border-color:var(--resistance);color:var(--resistance)}
   input,select{width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);
     color:var(--text);font-size:13px;margin-top:4px}
-  .row{display:flex;gap:8px;align-items:center}
   .chk{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
   .chk label{display:flex;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--border);
     border-radius:5px;padding:4px 8px;cursor:pointer;font-size:12px}
@@ -67,7 +66,6 @@
   td.side-support{color:var(--support);font-weight:700;text-align:left}
   td.side-resistance{color:var(--resistance);font-weight:700;text-align:left}
   tr:hover td{background:var(--panel2)}
-  .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px}
   details{padding:10px 16px;border-top:1px solid var(--border);max-height:32%;overflow:auto}
   summary{cursor:pointer;color:var(--muted)}
   .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--muted);border-top-color:var(--accent);
@@ -198,7 +196,6 @@ function gatherSettings(){
   };
 }
 
-function priceDecimals(){ return tickDecimals; }
 function fmtPrice(v){ return typeof v==='number' ? v.toFixed(tickDecimals) : (v==null?'—':v); }
 
 function sortedZones(){

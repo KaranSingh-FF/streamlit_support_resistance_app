@@ -94,15 +94,6 @@ class Api:
         path = result[0] if isinstance(result, (list, tuple)) else result
         return {"path": path, "instrument": engine.clean_instrument_name(os.path.basename(path))}
 
-    def update_master(self, path, instrument, sheet="Data"):
-        """One-shot ingest (drops invalid OHLC). Kept for back-compat; the UI now
-        uses preview_upload + commit_upload so invalid rows can be reviewed."""
-        try:
-            stats = storage.ingest_excel(path, str(instrument).strip(), sheet or "Data")
-            return {"ok": True, "stats": _jsonsafe(stats), "instruments": storage.list_instruments()}
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "error": str(exc), "trace": traceback.format_exc()}
-
     def preview_upload(self, path, instrument, sheet="Data"):
         """Parse the file and report any OHLC-invalid rows WITHOUT writing to the
         master, so the user can decide per-row whether to keep or remove them."""
@@ -223,10 +214,7 @@ def _enable_dpi_awareness():
 def main():
     storage.set_base_dir(_resolve_data_dir())
     _enable_dpi_awareness()
-    try:
-        import webview
-    except Exception:  # pywebview missing -> browser fallback
-        return _browser_fallback()
+    import webview
 
     # The page inlines plotly.js (~5 MB). On Windows, pywebview's EdgeChromium
     # backend renders inline `html=` via NavigateToString, which silently fails
@@ -323,28 +311,6 @@ def selftest(verbose: bool = True) -> bool:
             print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f"  ({detail})" if detail else ""))
         print(f"\nself-test: {passed}/{len(checks)} checks passed")
     return passed == len(checks)
-
-
-def _browser_fallback():
-    """Minimal no-pywebview path: build a report for the first instrument and open it."""
-    import tempfile
-    import webbrowser
-
-    storage.ensure_dirs()
-    instruments = storage.list_instruments()
-    if not instruments:
-        print("No instrument data found in", storage.master_dir())
-        print("Add data with the Streamlit app or sr.storage.ingest_excel(), then re-run.")
-        return
-    inst = instruments[0]
-    master = storage.load_master(inst)
-    cfg = engine.SRConfig()
-    final_zones, _, _, tf_data, _ = engine.compute_sr(master, cfg)
-    fig = charting.build_sr_figure(tf_data.get(inst, {}), final_zones, inst, cfg.lookback)
-    out = Path(tempfile.gettempdir()) / f"{storage.safe_name(inst)}_sr.html"
-    out.write_text(charting.figure_to_html(fig, include_plotlyjs=True), encoding="utf-8")
-    print("pywebview not available — opened a browser report instead:", out)
-    webbrowser.open(out.as_uri())
 
 
 if __name__ == "__main__":

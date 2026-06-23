@@ -175,10 +175,7 @@ def ingest_excel(file_path, instrument: str, sheet_name: str = "Data") -> dict:
     """
     from .engine import normalize_ohlcv
 
-    try:
-        raw = read_excel_any(file_path, sheet_name=sheet_name)
-    except Exception:
-        raw = read_excel_any(file_path, sheet_name=None)
+    raw = read_upload(file_path, sheet_name)
     normalized = normalize_ohlcv(raw, instrument)
     _, stats = merge_into_master(normalized, instrument)
     stats["rows_in_file"] = int(len(raw))

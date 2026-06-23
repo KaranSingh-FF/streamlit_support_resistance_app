@@ -228,14 +228,6 @@ def zones_to_records(final_zones: pd.DataFrame) -> list[dict]:
     return df.to_dict(orient="records")
 
 
-def figure_to_json(fig) -> str:
-    return fig.to_json()
-
-
-def figure_to_html(fig, include_plotlyjs="cdn", full_html=True) -> str:
-    return fig.to_html(include_plotlyjs=include_plotlyjs, full_html=full_html)
-
-
 def plotlyjs_script() -> str:
     from plotly.offline import get_plotlyjs
 
