@@ -20,7 +20,7 @@ Two interchangeable front-ends over one shared engine:
 
 | Interface | Command | Notes |
 |---|---|---|
-| **Desktop app** (primary) | `python run_desktop.py` | Embedded window (pywebview). Packageable to a single `.exe`. |
+| **Desktop app** (primary) | `python run_desktop.py` | Embedded window (pywebview). Packaged to a standalone Windows app (`.exe`). |
 | **Streamlit** (legacy) | `streamlit run streamlit_sr_app.py` | Browser UI; same engine and charts. |
 
 ---
@@ -32,11 +32,17 @@ pip install -r requirements.txt        # core + desktop
 python run_desktop.py                  # launch the desktop terminal
 ```
 
-Then in the app:
+**Daily workflow:**
 1. **Select Excel file** → set/confirm the instrument name → **Update master data**.
-   (First file per instrument can be full history; later files just the last day.)
+   First file per instrument can be full history; after that, just drop the latest
+   day — overlapping rows are deduplicated automatically.
 2. Pick the instrument, adjust settings if needed, click **▶ Run S/R Engine**.
-3. Read the zones off the chart and the sortable table.
+3. Read the levels off the chart, the summary cards, and the sortable zone table.
+
+**Chart controls:** hover any S/R band for its score / touches / timeframes /
+distance; click **Support**, **Resistance**, or the swing markers in the legend
+to toggle them across all panels; use the **7d / 1m / 3m / all** range buttons and
+scroll to zoom.
 
 No real data on hand? A synthetic sample is included:
 
@@ -100,27 +106,47 @@ why), so nothing is dropped silently.
 
 ```
 sr/
-  engine.py      # pure S/R math (no IO / no UI)
-  storage.py     # per-instrument master CSV: merge, dedup, list, delete
-  charting.py    # Plotly multi-panel candlestick + zone figures
-  desktop.py     # pywebview app + JS API bridge
-  web/index.html # desktop UI (plotly.js injected at runtime)
-run_desktop.py   # desktop entry point
+  engine.py          # pure S/R math (no IO / no UI)
+  storage.py         # per-instrument master CSV: merge, dedup, list, delete
+  charting.py        # Plotly multi-panel candlestick + zone figures
+  desktop.py         # pywebview app, JS API bridge, --selftest
+  web/index.html     # desktop UI (plotly.js bundled; loaded via temp-file URL)
+run_desktop.py       # desktop entry point (--selftest / --version flags)
 streamlit_sr_app.py  # legacy Streamlit UI (same engine)
-scripts/make_sample_data.py  # synthetic OHLC generator
-packaging/       # PyInstaller spec + build_exe.bat
-tests/           # pytest suite (engine + dedup + adaptive timeframes)
+scripts/make_sample_data.py   # synthetic OHLC generator
+packaging/           # desktop.spec (PyInstaller) + build_exe.bat
+tests/               # conftest + engine / charting / storage / desktop suites
 ```
 
 ## Tests
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q
+pytest -q                                   # full suite (55 tests)
+python run_desktop.py --selftest            # end-to-end smoke test, exits 0/1
 ```
 
-Covers ISO-UTC parsing, instrument naming, native-interval detection, the
-adaptive-timeframe rule, and the dedup/overwrite/append master logic.
+The suite covers ISO-UTC parsing and normalization edge cases (missing/lowercase/
+bad-date/duplicate/negative-price), instrument naming, native-interval detection
+and the adaptive-timeframe rule, the dedup/overwrite/append master logic, chart
+building for empty/constant/single-timeframe inputs, and the desktop API —
+including the strict-JSON contract the pywebview bridge relies on.
+
+## Troubleshooting
+
+- **First launch is slow.** A one-folder PyInstaller app unpacks and WebView2
+  initializes its cache on first run — give it a few seconds before assuming it
+  hung.
+- **Blank window.** Fixed: the UI is loaded from a temp-file URL rather than as
+  inline HTML (WebView2's `NavigateToString` silently drops content over ~2 MB,
+  and the page bundles plotly.js). If you ever see it again, confirm the engine
+  is fine with `SR-Terminal.exe --selftest`.
+- **Window won't open at all.** Ensure the **WebView2 runtime** is installed
+  (Microsoft Edge WebView2 Runtime). To see the actual error, set `console=True`
+  in `packaging/desktop.spec`, rebuild, and run the exe from a terminal.
+- **"No date/datetime column" or "Missing OHLC columns".** The selected sheet
+  isn't the data sheet, or the headers differ — check the **Sheet name** field
+  (default `Data`) and the expected columns above.
 
 ## Data & privacy
 
