@@ -1,0 +1,5 @@
+# Development / packaging / legacy UI extras
+-r requirements.txt
+pyinstaller>=6.6     # build the .exe
+pytest>=8.0          # run the test suite
+streamlit>=1.36      # legacy browser UI (streamlit run streamlit_sr_app.py)

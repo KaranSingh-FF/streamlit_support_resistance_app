@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Support / Resistance Terminal</title>
+<!--PLOTLY_JS-->
+<style>
+  :root{
+    --bg:#0e1117; --panel:#161b25; --panel2:#1c2230; --border:#262d3a;
+    --text:#e6e9ef; --muted:#8b93a7; --accent:#4c8dff;
+    --support:#26a69a; --resistance:#ef5350; --warn:#f5d142;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:"Segoe UI",Roboto,system-ui,sans-serif;font-size:13px}
+  .app{display:flex;height:100vh;overflow:hidden}
+  /* sidebar */
+  .side{width:300px;min-width:300px;background:var(--panel);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;overflow-y:auto}
+  .side h1{font-size:15px;margin:0;padding:14px 16px;border-bottom:1px solid var(--border);letter-spacing:.5px}
+  .side h1 span{color:var(--accent)}
+  .grp{padding:12px 16px;border-bottom:1px solid var(--border)}
+  .grp .lbl{color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.8px;margin-bottom:8px}
+  button{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel2);
+    color:var(--text);cursor:pointer;font-size:13px;margin-top:6px;transition:.15s}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  button.danger:hover{border-color:var(--resistance);color:var(--resistance)}
+  input,select{width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);
+    color:var(--text);font-size:13px;margin-top:4px}
+  .row{display:flex;gap:8px;align-items:center}
+  .chk{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .chk label{display:flex;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--border);
+    border-radius:5px;padding:4px 8px;cursor:pointer;font-size:12px}
+  .sld{margin-top:10px}
+  .sld .v{float:right;color:var(--accent)}
+  .file{font-size:11px;color:var(--muted);margin-top:6px;word-break:break-all}
+  /* main */
+  .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .status{padding:8px 14px;border-bottom:1px solid var(--border);background:var(--panel);font-size:12px;color:var(--muted);
+    display:flex;justify-content:space-between;align-items:center;min-height:36px}
+  .status.err{color:var(--resistance)} .status.ok{color:var(--support)}
+  #chart{flex:1;min-height:0}
+  .table-wrap{height:34%;overflow:auto;border-top:1px solid var(--border);background:var(--panel)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--panel2);white-space:nowrap}
+  th{position:sticky;top:0;background:var(--panel2);cursor:pointer;color:var(--muted);font-weight:600;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  td.side-support{color:var(--support);font-weight:700;text-align:left}
+  td.side-resistance{color:var(--resistance);font-weight:700;text-align:left}
+  tr:hover td{background:var(--panel2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px}
+  details{padding:10px 16px;border-top:1px solid var(--border)}
+  summary{cursor:pointer;color:var(--muted)}
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--muted);border-top-color:var(--accent);
+    border-radius:50%;animation:s .7s linear infinite;vertical-align:middle;margin-right:6px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <h1>S/R <span>Terminal</span></h1>
+
+    <div class="grp">
+      <div class="lbl">1 · Add / update data</div>
+      <button id="btnPick">Select Excel file…</button>
+      <div class="file" id="pickedFile">No file selected</div>
+      <input id="instName" placeholder="Instrument name" />
+      <input id="sheetName" value="Data" title="Excel sheet name" />
+      <button id="btnUpdate">Update master data</button>
+    </div>
+
+    <div class="grp">
+      <div class="lbl">2 · Instrument</div>
+      <select id="instSelect"></select>
+      <button id="btnDelete" class="danger">Delete selected master</button>
+    </div>
+
+    <div class="grp">
+      <div class="lbl">3 · Settings</div>
+      <div class="chk" id="tfBox">
+        <label><input type="checkbox" value="15min" checked>15m</label>
+        <label><input type="checkbox" value="1h" checked>1h</label>
+        <label><input type="checkbox" value="4h" checked>4h</label>
+        <label><input type="checkbox" value="1D" checked>1D</label>
+        <label><input type="checkbox" value="1W">1W</label>
+      </div>
+      <div class="sld">Min score <span class="v" id="vScore">3.0</span>
+        <input type="range" id="minScore" min="0" max="20" step="0.5" value="3"></div>
+      <div class="sld">Max distance (ATR) <span class="v" id="vDist">10</span>
+        <input type="range" id="maxDist" min="1" max="30" step="1" value="10"></div>
+      <div class="sld">Zone width × ATR <span class="v" id="vWidth">0.25</span>
+        <input type="range" id="atrMult" min="0.05" max="1" step="0.05" value="0.25"></div>
+      <div class="sld">Chart bars <span class="v" id="vLb">300</span>
+        <input type="range" id="lookback" min="50" max="1500" step="50" value="300"></div>
+    </div>
+
+    <div class="grp">
+      <button id="btnRun" class="primary">▶ Run S/R Engine</button>
+    </div>
+  </aside>
+
+  <section class="main">
+    <div class="status" id="status"><span>Ready.</span><span id="statusRight"></span></div>
+    <div id="chart"><div class="empty">Select an instrument and click <b>Run S/R Engine</b>.</div></div>
+    <div class="table-wrap">
+      <table id="zonesTable"><thead></thead><tbody></tbody></table>
+    </div>
+    <details id="diagWrap" style="display:none">
+      <summary>Timeframe diagnostics</summary>
+      <table id="diagTable"><thead></thead><tbody></tbody></table>
+    </details>
+  </section>
+</div>
+
+<script>
+let API = null;
+let pickedPath = null;
+let lastZones = [], zoneSort = {key:'score', dir:-1};
+
+function $(id){return document.getElementById(id)}
+function setStatus(msg, cls){const s=$('status'); s.className='status '+(cls||''); s.firstElementChild.innerHTML=msg;}
+function busy(msg){setStatus('<span class="spin"></span>'+msg);}
+
+function gatherSettings(){
+  const tfs = [...document.querySelectorAll('#tfBox input:checked')].map(c=>c.value);
+  return {
+    timeframes: tfs,
+    min_score: parseFloat($('minScore').value),
+    max_distance_atr: parseFloat($('maxDist').value),
+    atr_multiplier: parseFloat($('atrMult').value),
+    lookback: parseInt($('lookback').value),
+  };
+}
+
+// live slider labels
+const sliders = {minScore:'vScore', maxDist:'vDist', atrMult:'vWidth', lookback:'vLb'};
+for(const [s,v] of Object.entries(sliders)){
+  $(s).addEventListener('input', ()=> $(v).textContent = $(s).value);
+}
+
+async function refreshInstruments(selected){
+  const list = await API.list_instruments();
+  const sel = $('instSelect');
+  sel.innerHTML = '';
+  list.forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=n;sel.appendChild(o);});
+  if(selected && list.includes(selected)) sel.value = selected;
+  return list;
+}
+
+async function pickFile(){
+  const r = await API.select_file();
+  if(!r || !r.path){return;}
+  pickedPath = r.path;
+  $('pickedFile').textContent = r.path;
+  if(r.instrument) $('instName').value = r.instrument;
+  setStatus('File selected. Set the instrument name, then “Update master data”.');
+}
+
+async function updateMaster(){
+  if(!pickedPath){setStatus('Pick an Excel file first.', 'err');return;}
+  const inst = $('instName').value.trim();
+  if(!inst){setStatus('Enter an instrument name.', 'err');return;}
+  busy('Updating master data…');
+  const res = await API.update_master(pickedPath, inst, $('sheetName').value.trim() || 'Data');
+  if(!res.ok){setStatus('Update failed: '+res.error, 'err');return;}
+  const s = res.stats;
+  let warn = s.rows_dropped_bad>0 ? `  ⚠ ${s.rows_dropped_bad} rows dropped (bad dates/values)` : '';
+  setStatus(`Updated <b>${inst}</b>: +${s.net_new_rows} new rows (now ${s.master_rows_after}).`+warn, 'ok');
+  await refreshInstruments(inst);
+}
+
+async function deleteMaster(){
+  const inst = $('instSelect').value;
+  if(!inst) return;
+  if(!confirm('Delete stored master data for '+inst+'?')) return;
+  await API.delete_master(inst);
+  await refreshInstruments();
+  setStatus('Deleted '+inst+'.');
+}
+
+function renderZones(){
+  const cols = [['side','Side'],['zone_center','Center'],['zone_low','Low'],['zone_high','High'],
+                ['score','Score'],['touches','Touch'],['timeframes','TFs'],['distance_atr','Dist(ATR)']];
+  const thead = $('zonesTable').tHead, tbody = $('zonesTable').tBodies[0];
+  thead.innerHTML = '<tr>'+cols.map(c=>`<th data-k="${c[0]}">${c[1]}</th>`).join('')+'</tr>';
+  thead.querySelectorAll('th').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k; zoneSort = {key:k, dir: zoneSort.key===k? -zoneSort.dir : -1}; renderZones();
+  });
+  const rows = [...lastZones].sort((a,b)=>{
+    const x=a[zoneSort.key], y=b[zoneSort.key];
+    return (typeof x==='number'? x-y : String(x).localeCompare(String(y))) * zoneSort.dir;
+  });
+  const fmt = v => typeof v==='number' ? (Math.abs(v)<100? v.toFixed(4): v.toFixed(2)) : v;
+  tbody.innerHTML = rows.map(z=>`<tr>
+    <td class="side-${z.side}">${z.side}</td>
+    <td>${fmt(z.zone_center)}</td><td>${fmt(z.zone_low)}</td><td>${fmt(z.zone_high)}</td>
+    <td><b>${z.score}</b></td><td>${z.touches}</td><td>${z.timeframes}</td><td>${z.distance_atr}</td>
+  </tr>`).join('');
+}
+
+function renderDiagnostics(diag){
+  const wrap=$('diagWrap');
+  if(!diag || !diag.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  const cols=['timeframe','status','bars','native','reason'];
+  $('diagTable').tHead.innerHTML='<tr>'+cols.map(c=>`<th>${c}</th>`).join('')+'</tr>';
+  $('diagTable').tBodies[0].innerHTML = diag.map(d=>'<tr>'+cols.map(c=>`<td>${d[c]??''}</td>`).join('')+'</tr>').join('');
+}
+
+async function runSR(){
+  const inst = $('instSelect').value;
+  if(!inst){setStatus('No instrument selected. Add data first.', 'err');return;}
+  busy('Calculating support/resistance for '+inst+'…');
+  const res = await API.run_sr(inst, gatherSettings());
+  if(!res.ok){setStatus('Run failed: '+res.error, 'err');return;}
+  const fig = JSON.parse(res.figure);
+  Plotly.react('chart', fig.data, fig.layout, {responsive:true, displaylogo:false});
+  lastZones = res.zones || [];
+  renderZones();
+  renderDiagnostics(res.diagnostics);
+  const n = lastZones.length, skipped = (res.diagnostics||[]).filter(d=>d.status==='skipped').length;
+  setStatus(`Done — <b>${n}</b> zones for ${inst}.`, 'ok');
+  $('statusRight').textContent = skipped? `${skipped} timeframe(s) skipped (see diagnostics)`:'';
+}
+
+function init(){
+  API = window.pywebview.api;
+  $('btnPick').onclick = pickFile;
+  $('btnUpdate').onclick = updateMaster;
+  $('btnDelete').onclick = deleteMaster;
+  $('btnRun').onclick = runSR;
+  refreshInstruments().then(list=>{
+    if(list.length) setStatus(`${list.length} instrument(s) loaded. Pick one and Run.`);
+    else setStatus('No data yet — select an Excel file to begin.');
+  });
+}
+window.addEventListener('pywebviewready', init);
+</script>
+</body>
+</html>

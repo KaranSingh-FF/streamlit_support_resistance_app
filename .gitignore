@@ -1,0 +1,28 @@
+# --- Real trading data: NEVER commit ---------------------------------------
+sr_data_store/
+*.parquet
+*_master.csv
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# --- PyInstaller build artifacts -------------------------------------------
+build/
+dist/
+*.manifest
+
+# --- OS / editor -----------------------------------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Keep the synthetic sample (sample_data/) tracked — it contains no real data.

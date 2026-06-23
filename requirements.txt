@@ -1,0 +1,6 @@
+# Core engine + desktop app (everything needed to run run_desktop.py)
+numpy>=1.26
+pandas>=2.2
+openpyxl>=3.1
+plotly>=5.22
+pywebview>=5.0
