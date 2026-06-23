@@ -148,10 +148,19 @@ def main():
     except Exception:  # pywebview missing -> browser fallback
         return _browser_fallback()
 
+    # The page inlines plotly.js (~5 MB). On Windows, pywebview's EdgeChromium
+    # backend renders inline `html=` via NavigateToString, which silently fails
+    # for content over ~2 MB (-> blank window). Write the page to a temp file and
+    # load it by URL, which has no such limit.
+    import tempfile
+
+    ui_file = Path(tempfile.gettempdir()) / "sr_terminal_ui.html"
+    ui_file.write_text(build_page(), encoding="utf-8")
+
     api = Api()
     window = webview.create_window(
         "Support / Resistance Terminal",
-        html=build_page(), js_api=api,
+        url=ui_file.as_uri(), js_api=api,
         width=1440, height=920, min_size=(1024, 720),
     )
     api.set_window(window)
