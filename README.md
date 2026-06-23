@@ -10,8 +10,11 @@ resistance zones** drawn on interactive candlestick charts.
   native bar interval and skips timeframes finer than it, so a 15-min view of an
   hourly feed can't double-count the same level.
 - **Interactive visuals** — stacked candlestick panels per timeframe with
-  strength-graded S/R bands (green = support, red = resistance), a current-price
-  line, and hover details (score, touches, contributing timeframes, distance).
+  strength-graded S/R bands (green = support, red = resistance), swing-high/low
+  markers, a current-price line, a crosshair, and range buttons. Hover any band
+  for its score / touches / timeframes / distance; click the legend to toggle
+  Support, Resistance, or swing markers across all panels. Summary cards show the
+  current price and nearest support/resistance at a glance.
 
 Two interchangeable front-ends over one shared engine:
 
@@ -47,12 +50,24 @@ python scripts/make_sample_data.py     # writes sample_data/SAMPLE_15min.xlsx
 packaging\build_exe.bat
 ```
 
-Produces `dist\SR-Terminal\SR-Terminal.exe` (one-folder build). It stores its
-data in a `sr_data_store\` folder next to the executable. If the window fails to
-open, edit `packaging/desktop.spec` and set `console=True` to see tracebacks.
+Produces `dist\SR-Terminal\SR-Terminal.exe` (one-folder build) that bundles its
+own Python runtime — **no Python install needed on the target machine**. It
+stores data in a `sr_data_store\` folder next to the executable.
 
-> Built and tested on **Python 3.14 / pandas 3.0**. pywebview uses the Windows
-> WebView2 runtime (preinstalled on Windows 11).
+Verify the built binary without opening a window (exercises Excel IO, the engine,
+charting, and the JSON bridge end-to-end):
+
+```bat
+dist\SR-Terminal\SR-Terminal.exe --selftest
+```
+
+It prints a PASS/FAIL checklist and exits `0` on success. If the GUI window
+itself fails to open, set `console=True` in `packaging/desktop.spec` and rebuild
+to see tracebacks.
+
+> Built and tested on **Python 3.14 / pandas 3.0**. The GUI uses the Windows
+> **WebView2** runtime (preinstalled on Windows 10/11; if missing, install
+> "Microsoft Edge WebView2 Runtime"). The `--selftest` path does not need it.
 
 ## Expected Excel format
 

@@ -118,6 +118,7 @@ class Api:
                 "ok": True,
                 "figure": fig.to_json(),
                 "zones": _jsonsafe(charting.zones_to_records(final_zones)),
+                "summary": _jsonsafe(charting.summarize_zones(final_zones)),
                 "diagnostics": _df_records(diagnostics),
             }
         except Exception as exc:  # noqa: BLE001
@@ -155,6 +156,76 @@ def main():
     )
     api.set_window(window)
     webview.start()
+
+
+def _synthetic_ohlc(periods: int = 1200) -> pd.DataFrame:
+    """Deterministic synthetic 15-min QH-style frame (for --selftest, no files)."""
+    rng = np.random.default_rng(7)
+    idx = pd.date_range("2026-01-05 13:30:00", periods=periods, freq="15min")
+    close = 100 + np.cumsum(rng.normal(0, 0.15, periods))
+    openp = np.concatenate([[close[0]], close[:-1]])
+    spread = np.abs(rng.normal(0, 0.1, periods)) + 0.03
+    return pd.DataFrame({
+        "Date": idx.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "Open": openp.round(2), "High": (np.maximum(openp, close) + spread).round(2),
+        "Low": (np.minimum(openp, close) - spread).round(2),
+        "Volume": rng.integers(50, 1500, periods), "Close": close.round(2),
+    })
+
+
+def selftest(verbose: bool = True) -> bool:
+    """Exercise the whole bundle headlessly (no window): Excel IO -> engine ->
+    chart -> strict-JSON payload -> UI template. Used to validate the .exe.
+    """
+    import json
+    import tempfile
+
+    checks: list[tuple[str, bool, str]] = []
+
+    def check(name, cond, detail=""):
+        checks.append((name, bool(cond), detail))
+
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            storage.set_base_dir(d)
+            xlsx = Path(d) / "selftest.xlsx"
+            with pd.ExcelWriter(xlsx, engine="openpyxl") as w:
+                _synthetic_ohlc().to_excel(w, index=False, sheet_name="Data")
+
+            stats = storage.ingest_excel(xlsx, "SELFTEST", "Data")
+            check("excel ingest -> master", stats["master_rows_after"] > 0, f"{stats['master_rows_after']} rows")
+            check("no rows dropped", stats["rows_dropped_bad"] == 0)
+
+            master = storage.load_master("SELFTEST")
+            check("load master (CSV round-trip)", master is not None and len(master) > 0)
+
+            final_zones, _, _, tf_data, diag = engine.compute_sr(master, engine.SRConfig())
+            check("zones produced", not final_zones.empty, f"{len(final_zones)} zones")
+            check("diagnostics produced", not diag.empty)
+
+            fig = charting.build_sr_figure(tf_data.get("SELFTEST", {}), final_zones, "SELFTEST", 300)
+            check("figure has traces", len(fig.data) > 0, f"{len(fig.data)} traces")
+
+            payload = {
+                "figure": fig.to_json(),
+                "zones": _jsonsafe(charting.zones_to_records(final_zones)),
+                "summary": _jsonsafe(charting.summarize_zones(final_zones)),
+                "diagnostics": _df_records(diag),
+            }
+            s = json.dumps(payload, allow_nan=False)  # strict JSON, the pywebview contract
+            check("strict-JSON payload", len(s) > 1000, f"{len(s)} bytes")
+
+            page = build_page()
+            check("UI template + plotly.js bundled", "<!--PLOTLY_JS-->" not in page and "Plotly" in page)
+    except Exception as exc:  # noqa: BLE001
+        check(f"EXCEPTION: {exc}", False, traceback.format_exc())
+
+    passed = sum(1 for _, ok, _ in checks if ok)
+    if verbose:
+        for name, ok, detail in checks:
+            print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f"  ({detail})" if detail else ""))
+        print(f"\nself-test: {passed}/{len(checks)} checks passed")
+    return passed == len(checks)
 
 
 def _browser_fallback():

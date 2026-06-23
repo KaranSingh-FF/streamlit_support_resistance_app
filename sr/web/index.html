@@ -41,6 +41,16 @@
   .status{padding:8px 14px;border-bottom:1px solid var(--border);background:var(--panel);font-size:12px;color:var(--muted);
     display:flex;justify-content:space-between;align-items:center;min-height:36px}
   .status.err{color:var(--resistance)} .status.ok{color:var(--support)}
+  /* summary cards */
+  .cards{display:flex;gap:10px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--border)}
+  .card{flex:1;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;min-width:0}
+  .card .k{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)}
+  .card .val{font-size:20px;font-weight:700;margin-top:2px}
+  .card .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .card.support{border-left:3px solid var(--support)} .card.support .val{color:var(--support)}
+  .card.resistance{border-left:3px solid var(--resistance)} .card.resistance .val{color:var(--resistance)}
+  .card.price{border-left:3px solid var(--warn)} .card.price .val{color:var(--warn)}
+  .cards.hidden{display:none}
   #chart{flex:1;min-height:0}
   .table-wrap{height:34%;overflow:auto;border-top:1px solid var(--border);background:var(--panel)}
   table{width:100%;border-collapse:collapse;font-size:12px}
@@ -105,6 +115,7 @@
 
   <section class="main">
     <div class="status" id="status"><span>Ready.</span><span id="statusRight"></span></div>
+    <div class="cards hidden" id="cards"></div>
     <div id="chart"><div class="empty">Select an instrument and click <b>Run S/R Engine</b>.</div></div>
     <div class="table-wrap">
       <table id="zonesTable"><thead></thead><tbody></tbody></table>
@@ -202,6 +213,20 @@ function renderZones(){
   </tr>`).join('');
 }
 
+function fmtNum(v){return typeof v==='number' ? (Math.abs(v)<100? v.toFixed(4): v.toFixed(2)) : '—';}
+
+function renderSummary(s){
+  const cards = $('cards');
+  if(!s || s.current_price==null){cards.className='cards hidden';cards.innerHTML='';return;}
+  const sup = s.nearest_support, res = s.nearest_resistance;
+  const card = (cls,k,val,sub)=>`<div class="card ${cls}"><div class="k">${k}</div><div class="val">${val}</div><div class="sub">${sub||''}</div></div>`;
+  cards.className='cards';
+  cards.innerHTML =
+    card('price','Current price', fmtNum(s.current_price), `${s.n_support} support · ${s.n_resistance} resistance`) +
+    card('support','Nearest support', sup? fmtNum(sup.center):'—', sup? `${fmtNum(sup.distance_atr)} ATR away · score ${sup.score}`:'none') +
+    card('resistance','Nearest resistance', res? fmtNum(res.center):'—', res? `${fmtNum(res.distance_atr)} ATR away · score ${res.score}`:'none');
+}
+
 function renderDiagnostics(diag){
   const wrap=$('diagWrap');
   if(!diag || !diag.length){wrap.style.display='none';return;}
@@ -218,8 +243,10 @@ async function runSR(){
   const res = await API.run_sr(inst, gatherSettings());
   if(!res.ok){setStatus('Run failed: '+res.error, 'err');return;}
   const fig = JSON.parse(res.figure);
-  Plotly.react('chart', fig.data, fig.layout, {responsive:true, displaylogo:false});
+  Plotly.react('chart', fig.data, fig.layout, {responsive:true, displaylogo:false, scrollZoom:true,
+    modeBarButtonsToRemove:['select2d','lasso2d']});
   lastZones = res.zones || [];
+  renderSummary(res.summary);
   renderZones();
   renderDiagnostics(res.diagnostics);
   const n = lastZones.length, skipped = (res.diagnostics||[]).filter(d=>d.status==='skipped').length;
