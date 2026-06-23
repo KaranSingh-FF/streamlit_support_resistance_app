@@ -187,22 +187,21 @@ def summarize_zones(final_zones: pd.DataFrame) -> dict:
                 "n_support": 0, "n_resistance": 0}
     cp = float(final_zones["current_price"].iloc[0])
 
-    def nearest(side, prefer_below):
+    # `side` is price-relative (support below price, resistance above), so the nearest
+    # of each side is simply the closest zone of that side to the current price.
+    def nearest(side):
         g = final_zones[final_zones["side"] == side]
         if g.empty:
             return None
-        cand = g[g["zone_center"] <= cp] if prefer_below else g[g["zone_center"] >= cp]
-        if cand.empty:
-            cand = g
-        row = cand.iloc[(cand["zone_center"] - cp).abs().argmin()]
+        row = g.iloc[(g["zone_center"] - cp).abs().argmin()]
         return {"center": float(row["zone_center"]), "low": float(row["zone_low"]),
                 "high": float(row["zone_high"]), "score": float(row["score"]),
                 "distance_atr": float(row["distance_atr"]) if pd.notna(row["distance_atr"]) else None}
 
     return {
         "current_price": cp,
-        "nearest_support": nearest("support", True),
-        "nearest_resistance": nearest("resistance", False),
+        "nearest_support": nearest("support"),
+        "nearest_resistance": nearest("resistance"),
         "n_support": int((final_zones["side"] == "support").sum()),
         "n_resistance": int((final_zones["side"] == "resistance").sum()),
     }

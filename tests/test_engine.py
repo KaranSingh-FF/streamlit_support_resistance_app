@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from conftest import normalized
+from conftest import descending, normalized
 from sr import engine
 
 
@@ -205,3 +205,23 @@ def test_sides_are_valid():
     if not fz.empty:
         assert set(fz["side"].unique()) <= {"support", "resistance"}
         assert (fz["zone_low"] <= fz["zone_high"]).all()
+
+
+# --- side classification must be PRICE-RELATIVE (regression for the swing-type bug) ---
+def test_side_is_price_relative_on_descending_series():
+    fz = engine.compute_sr(descending(), engine.SRConfig(timeframes=["1h", "4h", "1D"]))[0]
+    assert not fz.empty
+    cp = float(fz["current_price"].iloc[0])
+    # every support is at/below price, every resistance at/above price
+    assert (fz.loc[fz.side == "support", "zone_center"] <= cp).all()
+    assert (fz.loc[fz.side == "resistance", "zone_center"] >= cp).all()
+
+
+def test_every_zone_above_price_is_resistance():
+    fz = engine.compute_sr(descending(), engine.SRConfig(timeframes=["1h", "4h", "1D"]))[0]
+    cp = float(fz["current_price"].iloc[0])
+    above, below = fz[fz.zone_center > cp], fz[fz.zone_center < cp]
+    if not above.empty:
+        assert (above["side"] == "resistance").all()
+    if not below.empty:
+        assert (below["side"] == "support").all()

@@ -34,6 +34,21 @@ def normalized(interval: str, periods: int, seed: int = 1, instrument: str = "T"
     })
 
 
+def descending(n: int = 1300, instrument: str = "SPRD") -> pd.DataFrame:
+    """A normalized descending zigzag: old swing lows end up ABOVE the final price,
+    which is what exposes price-relative vs swing-type side classification."""
+    t = np.arange(n)
+    close = 8.0 - 3.0 * t / n + 0.6 * np.sin(t / 3.0) + 0.25 * np.sin(t / 11.0)
+    openp = np.concatenate([[close[0]], close[:-1]])
+    high = np.maximum(openp, close) + 0.05
+    low = np.minimum(openp, close) - 0.05
+    return pd.DataFrame({
+        "datetime": pd.date_range("2026-01-01", periods=n, freq="1h"),
+        "open": openp, "high": high, "low": low, "close": close,
+        "volume": 100, "instrument": instrument,
+    })
+
+
 def qh_excel_frame(periods: int, seed: int = 3) -> pd.DataFrame:
     """A raw QH-format frame (pre-normalization), ISO-UTC dates."""
     rng = np.random.default_rng(seed)

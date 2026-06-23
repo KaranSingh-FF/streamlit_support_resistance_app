@@ -225,6 +225,13 @@ def score_and_merge(zones_df: pd.DataFrame, timeframe_weights: dict, min_score: 
     d["distance_penalty"] = np.where(d["distance_atr"] > max_distance_atr, 2.0, 0.0)
     d["base_score"] = d["timeframe_score"] + d["touch_score"] + d["recency_score"] - d["distance_penalty"]
 
+    # Classify each zone by its position relative to the CURRENT price, not by the
+    # historical swing type. A former swing low that now sits above price is acting
+    # as resistance today (broken support -> resistance), and vice-versa. This makes
+    # the zone table, chart bands, and summary cards agree: every 'support' is below
+    # price and every 'resistance' is above it. (Swing *markers* keep their type.)
+    d["side"] = np.where(d["zone_center"] <= d["current_price"], "support", "resistance")
+
     final = []
     for (inst, side), g in d.sort_values("zone_center").groupby(["instrument", "side"]):
         g = g.sort_values("zone_center").reset_index(drop=True)

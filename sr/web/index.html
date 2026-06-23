@@ -33,6 +33,8 @@
   .chk{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
   .chk label{display:flex;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--border);
     border-radius:5px;padding:4px 8px;cursor:pointer;font-size:12px}
+  .chk label.tf-skipped{opacity:.4;text-decoration:line-through;border-style:dashed}
+  .chk label.tf-skipped::after{content:"skip";font-size:9px;color:var(--warn);text-decoration:none;margin-left:2px}
   .sld{margin-top:10px}
   .sld .v{float:right;color:var(--accent)}
   .file{font-size:11px;color:var(--muted);margin-top:6px;word-break:break-all}
@@ -227,6 +229,16 @@ function renderSummary(s){
     card('resistance','Nearest resistance', res? fmtNum(res.center):'—', res? `${fmtNum(res.distance_atr)} ATR away · score ${res.score}`:'none');
 }
 
+function markSkippedTimeframes(diag){
+  const reason = {};
+  (diag||[]).forEach(d=>{ if(d.status==='skipped') reason[d.timeframe]=d.reason; });
+  document.querySelectorAll('#tfBox label').forEach(lbl=>{
+    const tf = lbl.querySelector('input').value;
+    if(reason[tf]){ lbl.classList.add('tf-skipped'); lbl.title='Skipped: '+reason[tf]; }
+    else { lbl.classList.remove('tf-skipped'); lbl.removeAttribute('title'); }
+  });
+}
+
 function renderDiagnostics(diag){
   const wrap=$('diagWrap');
   if(!diag || !diag.length){wrap.style.display='none';return;}
@@ -249,6 +261,7 @@ async function runSR(){
   renderSummary(res.summary);
   renderZones();
   renderDiagnostics(res.diagnostics);
+  markSkippedTimeframes(res.diagnostics);
   const n = lastZones.length, skipped = (res.diagnostics||[]).filter(d=>d.status==='skipped').length;
   setStatus(`Done — <b>${n}</b> zones for ${inst}.`, 'ok');
   $('statusRight').textContent = skipped? `${skipped} timeframe(s) skipped (see diagnostics)`:'';

@@ -3,7 +3,7 @@ import json
 
 import pandas as pd
 
-from conftest import normalized
+from conftest import descending, normalized
 from sr import charting, engine
 
 
@@ -67,6 +67,19 @@ def test_summarize_nearest_sides():
         above = fz[(fz.side == "resistance") & (fz.zone_center >= cp)]
         if not above.empty:
             assert s["nearest_resistance"]["center"] >= cp - 1e-9
+
+
+def test_summary_nearest_is_the_global_nearest_level():
+    # On a descending series the naive (swing-type) logic picked the wrong card.
+    fz = engine.compute_sr(descending(), engine.SRConfig(timeframes=["1h", "4h", "1D"]))[0]
+    s = charting.summarize_zones(fz)
+    cp = s["current_price"]
+    above = fz[fz.zone_center > cp].sort_values("zone_center")
+    below = fz[fz.zone_center < cp].sort_values("zone_center")
+    if not above.empty and s["nearest_resistance"]:
+        assert abs(s["nearest_resistance"]["center"] - float(above.iloc[0]["zone_center"])) < 1e-9
+    if not below.empty and s["nearest_support"]:
+        assert abs(s["nearest_support"]["center"] - float(below.iloc[-1]["zone_center"])) < 1e-9
 
 
 def test_zones_to_records_empty():
