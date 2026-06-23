@@ -9,12 +9,20 @@ resistance zones** drawn on interactive candlestick charts.
 - **Per-instrument timeframe adaptation** — the engine detects each instrument's
   native bar interval and skips timeframes finer than it, so a 15-min view of an
   hourly feed can't double-count the same level.
+- **Price-relative zones** — every zone is classified by where it sits *now*:
+  supports below the current price, resistances above it (a broken support flips
+  to resistance). The table, chart bands, and summary cards always agree.
+- **Validation with review** — bars that fail OHLC logic (High ≥ Low, High ≥
+  max(O,C), Low ≤ min(O,C)) are caught at ingest; the desktop app shows them in a
+  dialog so you choose per-row whether to keep or remove them before anything is
+  written to the master.
 - **Interactive visuals** — stacked candlestick panels per timeframe with
   strength-graded S/R bands (green = support, red = resistance), swing-high/low
   markers, a current-price line, a crosshair, and range buttons. Hover any band
   for its score / touches / timeframes / distance; click the legend to toggle
   Support, Resistance, or swing markers across all panels. Summary cards show the
-  current price and nearest support/resistance at a glance.
+  current price and nearest support/resistance at a glance. The window is
+  DPI-aware and fully scrollable, so nothing is cropped or blurry at any size.
 
 Two interchangeable front-ends over one shared engine:
 
@@ -35,7 +43,8 @@ python run_desktop.py                  # launch the desktop terminal
 **Daily workflow:**
 1. **Select Excel file** → set/confirm the instrument name → **Update master data**.
    First file per instrument can be full history; after that, just drop the latest
-   day — overlapping rows are deduplicated automatically.
+   day — overlapping rows are deduplicated automatically. If any candle fails an
+   OHLC sanity check, a dialog lets you keep or remove those rows before saving.
 2. Pick the instrument, adjust settings if needed, click **▶ Run S/R Engine**.
 3. Read the levels off the chart, the summary cards, and the sortable zone table.
 
@@ -84,20 +93,23 @@ Date, Open, High, Low, Volume, Close, BuyVolume, SellVolume, isNewCandle
 ```
 
 `Date` may be ISO-8601 UTC (`2026-02-18T13:30:00.000Z`). Common lowercase
-variants (`datetime/date/time`, `open/high/low/close/volume`) also work. Rows
-whose date or OHLC can't be parsed are dropped and reported, never silently lost.
+variants (`datetime/date/time`, `open/high/low/close/volume`) also work.
+Negative prices (e.g. CL–BZ spreads) and zero-range bars are valid. Rows whose
+date/OHLC can't be parsed are dropped and reported; rows that parse but fail OHLC
+logic are surfaced in the keep/remove dialog rather than silently dropped.
 
 ## How the engine works
 
-1. **Normalize** the upload and merge into the instrument's master (CSV), keeping
-   one row per `instrument + datetime`.
+1. **Normalize & validate** the upload (parse, OHLC sanity checks) and merge into
+   the instrument's master (CSV), keeping one row per `instrument + datetime`.
 2. **Detect the native bar interval** and select effective timeframes (drop any
    finer than native to avoid duplicate levels).
 3. Per timeframe: **resample → ATR → swing highs/lows → cluster** nearby swings
    into zones.
 4. **Score & merge** zones across timeframes using timeframe weight, touch count,
    recency, and distance-to-price; multi-timeframe confluence boosts the score.
-5. Keep zones above `min_score` and within `max_distance_atr` of current price.
+5. **Classify by price** (support below / resistance above) and keep zones above
+   `min_score` and within `max_distance_atr` of the current price.
 
 A **diagnostics** panel shows exactly which timeframes were used vs skipped (and
 why), so nothing is dropped silently.
@@ -122,15 +134,18 @@ tests/               # conftest + engine / charting / storage / desktop suites
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q                                   # full suite (55 tests)
+pytest -q                                   # full suite (67 tests)
 python run_desktop.py --selftest            # end-to-end smoke test, exits 0/1
 ```
 
 The suite covers ISO-UTC parsing and normalization edge cases (missing/lowercase/
-bad-date/duplicate/negative-price), instrument naming, native-interval detection
-and the adaptive-timeframe rule, the dedup/overwrite/append master logic, chart
-building for empty/constant/single-timeframe inputs, and the desktop API —
-including the strict-JSON contract the pywebview bridge relies on.
+bad-date/duplicate/negative-price), **OHLC sanity validation** and the valid/
+invalid split, instrument naming, native-interval detection and the adaptive-
+timeframe rule, the dedup/overwrite/append master logic, the **price-relative
+side** invariant, engine **determinism**, the preview/commit keep-or-remove flow,
+chart building for empty/constant/single-timeframe inputs, and the desktop API —
+including the strict-JSON contract the pywebview bridge relies on. `--selftest`
+additionally asserts sides are price-relative.
 
 ## Troubleshooting
 
@@ -144,6 +159,9 @@ including the strict-JSON contract the pywebview bridge relies on.
 - **Window won't open at all.** Ensure the **WebView2 runtime** is installed
   (Microsoft Edge WebView2 Runtime). To see the actual error, set `console=True`
   in `packaging/desktop.spec`, rebuild, and run the exe from a terminal.
+- **Blurry text or cropped content.** The app declares itself per-monitor
+  DPI-aware and the layout scrolls, so this should not happen. If it persists on
+  an unusual display-scaling setup, note your scaling (e.g. 150%) when reporting.
 - **"No date/datetime column" or "Missing OHLC columns".** The selected sheet
   isn't the data sheet, or the headers differ — check the **Sheet name** field
   (default `Data`) and the expected columns above.
