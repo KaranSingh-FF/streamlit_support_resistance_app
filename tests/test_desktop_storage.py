@@ -1,4 +1,5 @@
-"""Desktop API + storage tests, including the strict-JSON contract for pywebview."""
+"""Desktop API + storage tests, including the strict-JSON HTTP-bridge contract."""
+import io
 import json
 
 import numpy as np
@@ -90,7 +91,7 @@ def test_api_ingest_and_run(tmp_store):
     res = api.run_sr("QH", {"timeframes": ["15min", "1h", "4h", "1D"], "min_score": 3.0,
                             "max_distance_atr": 10.0, "atr_multiplier": 0.25, "lookback": 300})
     assert res["ok"]
-    # the entire payload must be strict-JSON (pywebview bridge contract)
+    # the entire payload must be strict-JSON (HTTP/JSON bridge contract)
     json.dumps(res, allow_nan=False)
     assert "figure" in res and "zones" in res and "summary" in res and "diagnostics" in res
 
@@ -148,6 +149,48 @@ def test_preview_clean_file_has_no_invalid(tmp_store):
 def test_build_page_inlines_plotly():
     page = desktop.build_page()
     assert "<!--PLOTLY_JS-->" not in page and "Plotly" in page
+
+
+def test_http_routes_end_to_end(tmp_store):
+    """The real bridge: page + preview(multipart) -> commit -> instruments -> run -> delete."""
+    client = desktop.create_app().test_client()
+    r = client.get("/")
+    assert r.status_code == 200 and b"Plotly" in r.data and b"<!--PLOTLY_JS-->" not in r.data
+
+    data = _write_xlsx(tmp_store / "h.xlsx", qh_excel_frame(900)).read_bytes()
+    r = client.post("/api/preview", content_type="multipart/form-data",
+                    data={"instrument": "HX", "sheet": "Data", "file": (io.BytesIO(data), "h.xlsx")})
+    pv = r.get_json()
+    assert pv["ok"] and pv["n_invalid"] == 0 and pv["n_total"] == 900
+    assert client.post("/api/commit", json={"token": pv["token"], "keep_keys": []}).get_json()["ok"]
+    assert "HX" in client.get("/api/instruments").get_json()
+
+    r = client.post("/api/run", json={"instrument": "HX", "settings": {"timeframes": ["1h", "4h", "1D"]}})
+    rj = r.get_json()
+    assert rj["ok"] and "figure" in rj and "summary" in rj and "atr_by_tf" in rj
+    json.dumps(rj, allow_nan=False)  # strict-JSON over the wire
+    assert client.post("/api/delete", json={"instrument": "HX"}).get_json()["ok"]
+
+
+def test_http_run_unknown_instrument(tmp_store):
+    client = desktop.create_app().test_client()
+    rj = client.post("/api/run", json={"instrument": "NOPE", "settings": {}}).get_json()
+    assert rj["ok"] is False and "No master data" in rj["error"]
+
+
+def test_http_preview_no_file_rejected(tmp_store):
+    client = desktop.create_app().test_client()
+    rj = client.post("/api/preview", content_type="multipart/form-data",
+                     data={"instrument": "X", "sheet": "Data"}).get_json()
+    assert rj["ok"] is False and "file" in rj["error"].lower()
+
+
+def test_pending_dict_is_bounded(tmp_store):
+    api = desktop.Api()
+    data = _write_xlsx(tmp_store / "b.xlsx", qh_excel_frame(60)).read_bytes()
+    for _ in range(api._max_pending + 5):          # more previews than the cap, never committed
+        api.preview_upload(data, "B", "Data")
+    assert len(api._pending) <= api._max_pending   # memory stays bounded
 
 
 def test_selftest_passes():

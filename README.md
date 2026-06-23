@@ -21,14 +21,14 @@ resistance zones** drawn on interactive candlestick charts.
   markers, a current-price line, a crosshair, and range buttons. Hover any band
   for its score / touches / timeframes / distance; click the legend to toggle
   Support, Resistance, or swing markers across all panels. Summary cards show the
-  current price and nearest support/resistance at a glance. The window is
-  DPI-aware and fully scrollable, so nothing is cropped or blurry at any size.
+  current price and nearest support/resistance at a glance. It runs in your
+  browser, so it scales crisply and never crops at any window size or DPI.
 
 Two interchangeable front-ends over one shared engine:
 
 | Interface | Command | Notes |
 |---|---|---|
-| **Desktop app** (primary) | `python run_desktop.py` | Embedded window (pywebview). Packaged to a standalone Windows app (`.exe`). |
+| **Desktop app** (primary) | `python run_desktop.py` | Local server opened in your default browser. Packaged to a standalone Windows app (`.exe`). |
 | **Streamlit** (legacy) | `streamlit run streamlit_sr_app.py` | Browser UI; same engine and charts. |
 
 ---
@@ -69,20 +69,20 @@ Produces `dist\SR-Terminal\SR-Terminal.exe` (one-folder build) that bundles its
 own Python runtime — **no Python install needed on the target machine**. It
 stores data in a `sr_data_store\` folder next to the executable.
 
-Verify the built binary without opening a window (exercises Excel IO, the engine,
-charting, and the JSON bridge end-to-end):
+Verify the built binary headlessly — exercises Excel IO, the engine, charting,
+and the live HTTP routes end-to-end, no browser needed:
 
 ```bat
 dist\SR-Terminal\SR-Terminal.exe --selftest
 ```
 
-It prints a PASS/FAIL checklist and exits `0` on success. If the GUI window
-itself fails to open, set `console=True` in `packaging/desktop.spec` and rebuild
-to see tracebacks.
+It prints a PASS/FAIL checklist and exits `0` on success.
 
-> Built and tested on **Python 3.14 / pandas 3.0**. The GUI uses the Windows
-> **WebView2** runtime (preinstalled on Windows 10/11; if missing, install
-> "Microsoft Edge WebView2 Runtime"). The `--selftest` path does not need it.
+> Built and tested on **Python 3.14 / pandas 3.0**. The app runs a tiny local
+> server on `127.0.0.1` and opens your **default browser** (Edge / Chrome /
+> Firefox) — no extra GUI runtime (and no .NET / WebView2) is required. A console
+> window shows the local URL; keep it open while using the app and close it to
+> quit.
 
 ## Expected Excel format
 
@@ -121,9 +121,9 @@ sr/
   engine.py          # pure S/R math (no IO / no UI)
   storage.py         # per-instrument master CSV: merge, dedup, list, delete
   charting.py        # Plotly multi-panel candlestick + zone figures
-  desktop.py         # pywebview app, JS API bridge, --selftest
-  web/index.html     # desktop UI (plotly.js bundled; loaded via temp-file URL)
-run_desktop.py       # desktop entry point (--selftest / --version flags)
+  desktop.py         # local Flask server + JSON API (Api ops) + --selftest
+  web/index.html     # browser UI (plotly.js inlined; talks to /api/* via fetch)
+run_desktop.py       # entry point (--selftest / --version / --port flags)
 streamlit_sr_app.py  # legacy Streamlit UI (same engine)
 scripts/make_sample_data.py   # synthetic OHLC generator
 packaging/           # desktop.spec (PyInstaller) + build_exe.bat
@@ -144,24 +144,20 @@ invalid split, instrument naming, native-interval detection and the adaptive-
 timeframe rule, the dedup/overwrite/append master logic, the **price-relative
 side** invariant, engine **determinism**, the preview/commit keep-or-remove flow,
 chart building for empty/constant/single-timeframe inputs, and the desktop API —
-including the strict-JSON contract the pywebview bridge relies on. `--selftest`
-additionally asserts sides are price-relative.
+including the strict-JSON contract the HTTP/JSON bridge relies on (the self-test
+drives the live Flask routes in-process). `--selftest` additionally asserts sides
+are price-relative.
 
 ## Troubleshooting
 
-- **First launch is slow.** A one-folder PyInstaller app unpacks and WebView2
-  initializes its cache on first run — give it a few seconds before assuming it
-  hung.
-- **Blank window.** Fixed: the UI is loaded from a temp-file URL rather than as
-  inline HTML (WebView2's `NavigateToString` silently drops content over ~2 MB,
-  and the page bundles plotly.js). If you ever see it again, confirm the engine
-  is fine with `SR-Terminal.exe --selftest`.
-- **Window won't open at all.** Ensure the **WebView2 runtime** is installed
-  (Microsoft Edge WebView2 Runtime). To see the actual error, set `console=True`
-  in `packaging/desktop.spec`, rebuild, and run the exe from a terminal.
-- **Blurry text or cropped content.** The app declares itself per-monitor
-  DPI-aware and the layout scrolls, so this should not happen. If it persists on
-  an unusual display-scaling setup, note your scaling (e.g. 150%) when reporting.
+- **First launch is slow.** A one-folder PyInstaller app unpacks on first run —
+  give it a few seconds. A console window opens with the local URL, then your
+  browser opens automatically.
+- **Browser didn't open.** The console window prints the address
+  (`http://127.0.0.1:…`); open it in any browser. Keep the console window open
+  while using the app — closing it quits the app.
+- **Nothing happens / an error.** Confirm the engine and routes are fine with
+  `SR-Terminal.exe --selftest` (PASS/FAIL checklist; needs no browser or network).
 - **"No date/datetime column" or "Missing OHLC columns".** The selected sheet
   isn't the data sheet, or the headers differ — check the **Sheet name** field
   (default `Data`) and the expected columns above.

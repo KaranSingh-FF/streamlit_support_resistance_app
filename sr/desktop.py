@@ -1,17 +1,23 @@
-"""Embedded desktop app (pywebview) for the S/R terminal.
+"""Local-server desktop app for the S/R terminal.
 
-The window loads ``web/index.html`` with plotly.js inlined (fully offline) and
-exposes a small Python API to the page via ``window.pywebview.api``. All heavy
-lifting stays in :mod:`sr.engine`, :mod:`sr.storage`, and :mod:`sr.charting`.
+The same offline UI (``web/index.html`` with plotly.js inlined) is served from a
+localhost HTTP server and opened in the default browser. There is **no GUI
+toolkit and no .NET/pythonnet dependency** — the Python backend talks to the page
+over plain HTTP/JSON, so it runs on any Windows machine with a browser and is
+fully testable headlessly (start the server, hit the endpoints).
 
-If pywebview is unavailable, :func:`main` falls back to generating a standalone
-HTML report and opening it in the default browser, so the app never hard-fails.
+All heavy lifting stays in :mod:`sr.engine`, :mod:`sr.storage`, :mod:`sr.charting`.
 """
 from __future__ import annotations
 
+import io
+import json
 import os
+import socket
 import sys
+import threading
 import traceback
+import webbrowser
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +27,7 @@ from . import charting, engine, storage
 
 
 # ---------------------------------------------------------------------------
-# helpers
+# JSON helpers
 # ---------------------------------------------------------------------------
 def _jsonsafe(obj):
     """Make stats / records JSON-serializable (Timestamps, numpy scalars, NaN)."""
@@ -67,45 +73,52 @@ def _resolve_data_dir() -> Path:
     return Path(os.environ.get("SR_DATA_DIR", "sr_data_store"))
 
 
+def _read_any(source, sheet) -> pd.DataFrame:
+    """Read an Excel upload from raw bytes (HTTP upload) or a path (tests/CLI)."""
+    if isinstance(source, (bytes, bytearray)):
+        bio = io.BytesIO(bytes(source))
+        try:
+            return pd.read_excel(bio, sheet_name=sheet or "Data", engine="openpyxl")
+        except Exception:
+            bio.seek(0)
+            return pd.read_excel(bio, sheet_name=0, engine="openpyxl")
+    return storage.read_upload(source, sheet or "Data")
+
+
 # ---------------------------------------------------------------------------
-# JS API
+# Operations (pure: source -> JSON-safe dict). Shared by HTTP routes + tests.
 # ---------------------------------------------------------------------------
 class Api:
     def __init__(self):
-        self._window = None
         self._pending = {}      # token -> parsed upload awaiting a keep/remove decision
         self._token_seq = 0
+        self._lock = threading.Lock()   # guard _pending/_token_seq across threaded requests
+        self._max_pending = 16          # bound memory: evict oldest un-committed uploads
 
-    def set_window(self, window):
-        self._window = window
+    def list_instruments(self):
+        return storage.list_instruments()
 
-    # 1) data ingestion -----------------------------------------------------
-    def select_file(self):
-        import webview
+    def delete_master(self, instrument):
+        return {"ok": storage.delete_master(str(instrument))}
 
-        if self._window is None:
-            return {"path": None}
-        result = self._window.create_file_dialog(
-            webview.OPEN_DIALOG, allow_multiple=False,
-            file_types=("Excel files (*.xlsx;*.xls)", "All files (*.*)"),
-        )
-        if not result:
-            return {"path": None}
-        path = result[0] if isinstance(result, (list, tuple)) else result
-        return {"path": path, "instrument": engine.clean_instrument_name(os.path.basename(path))}
-
-    def preview_upload(self, path, instrument, sheet="Data"):
-        """Parse the file and report any OHLC-invalid rows WITHOUT writing to the
-        master, so the user can decide per-row whether to keep or remove them."""
+    def preview_upload(self, source, instrument, sheet="Data"):
+        """Parse the upload and report any OHLC-invalid rows WITHOUT writing to the
+        master, so the user can decide per-row whether to keep or remove them.
+        ``source`` is raw bytes (HTTP) or a path (tests)."""
         try:
             instrument = str(instrument).strip()
-            raw = storage.read_upload(path, sheet or "Data")
+            if not instrument:
+                return {"ok": False, "error": "Instrument name is required."}
+            raw = _read_any(source, sheet)
             n_total = int(len(raw))
             valid, invalid = engine.normalize_ohlcv_split(raw, instrument)
-            self._token_seq += 1
-            token = f"up{self._token_seq}"
-            self._pending[token] = {"instrument": instrument, "valid": valid,
-                                    "invalid": invalid, "n_total": n_total}
+            with self._lock:
+                self._token_seq += 1
+                token = f"up{self._token_seq}"
+                self._pending[token] = {"instrument": instrument, "valid": valid,
+                                        "invalid": invalid, "n_total": n_total}
+                while len(self._pending) > self._max_pending:  # drop oldest stale upload
+                    self._pending.pop(next(iter(self._pending)))
             invalid_rows = [{
                 "key": str(r["datetime"]), "datetime": str(r["datetime"]),
                 "open": float(r["open"]), "high": float(r["high"]),
@@ -123,7 +136,8 @@ class Api:
         """Finish an upload started by preview_upload, keeping only the invalid rows
         whose keys the user chose to keep."""
         try:
-            p = self._pending.pop(token, None)
+            with self._lock:
+                p = self._pending.pop(token, None)
             if p is None:
                 return {"ok": False, "error": "Upload session expired — please re-select the file."}
             keep = set(keep_keys or [])
@@ -142,14 +156,6 @@ class Api:
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc), "trace": traceback.format_exc()}
 
-    # 2) instruments --------------------------------------------------------
-    def list_instruments(self):
-        return storage.list_instruments()
-
-    def delete_master(self, instrument):
-        return {"ok": storage.delete_master(str(instrument))}
-
-    # 3) compute ------------------------------------------------------------
     def run_sr(self, instrument, settings=None):
         try:
             master = storage.load_master(str(instrument))
@@ -178,7 +184,7 @@ class Api:
 
 
 # ---------------------------------------------------------------------------
-# page assembly + launch
+# page assembly
 # ---------------------------------------------------------------------------
 def _template_path() -> Path:
     """Locate web/index.html both in source and inside a PyInstaller bundle."""
@@ -193,48 +199,88 @@ def build_page() -> str:
     return html.replace("<!--PLOTLY_JS-->", charting.plotlyjs_script())
 
 
-def _enable_dpi_awareness():
-    """Tell Windows this process handles its own scaling, so the window is rendered
-    crisply (not bitmap-stretched/blurred) on high-DPI or fractionally-scaled displays."""
-    if sys.platform != "win32":
-        return
-    import ctypes
+# ---------------------------------------------------------------------------
+# HTTP server (Flask)
+# ---------------------------------------------------------------------------
+def create_app(api: "Api | None" = None):
+    """Build the Flask app. Assumes storage.set_base_dir() was already called by the caller."""
+    from flask import Flask, jsonify, request, Response
 
-    for attempt in (
-        lambda: ctypes.windll.shcore.SetProcessDpiAwareness(2),  # per-monitor v2
-        lambda: ctypes.windll.user32.SetProcessDPIAware(),       # system DPI fallback
-    ):
-        try:
-            attempt()
-            return
-        except Exception:
-            continue
+    app = Flask(__name__)
+    app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # reject uploads larger than 200 MB
+    api = api or Api()
+
+    @app.get("/")
+    def _index():
+        return Response(build_page(), mimetype="text/html")
+
+    @app.get("/api/instruments")
+    def _instruments():
+        return jsonify(api.list_instruments())
+
+    @app.post("/api/preview")
+    def _preview():
+        f = request.files.get("file")
+        if f is None or not (f.filename or "").strip():
+            return jsonify({"ok": False, "error": "Please choose an Excel file."})
+        data = f.read()
+        if not data:
+            return jsonify({"ok": False, "error": "The selected file is empty."})
+        return jsonify(api.preview_upload(data, request.form.get("instrument", ""),
+                                          request.form.get("sheet", "Data")))
+
+    @app.post("/api/commit")
+    def _commit():
+        d = request.get_json(force=True, silent=True) or {}
+        return jsonify(api.commit_upload(d.get("token"), d.get("keep_keys")))
+
+    @app.post("/api/run")
+    def _run():
+        d = request.get_json(force=True, silent=True) or {}
+        return jsonify(api.run_sr(d.get("instrument"), d.get("settings")))
+
+    @app.post("/api/delete")
+    def _delete():
+        d = request.get_json(force=True, silent=True) or {}
+        return jsonify(api.delete_master(d.get("instrument", "")))
+
+    return app
 
 
-def main():
+def _free_port() -> int:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def main(port: int | None = None, open_browser: bool = True):
+    from werkzeug.serving import make_server
+
     storage.set_base_dir(_resolve_data_dir())
-    _enable_dpi_awareness()
-    import webview
+    if port is None:
+        port = int(os.environ.get("SR_PORT", "0")) or _free_port()
+    url = f"http://127.0.0.1:{port}/"
 
-    # The page inlines plotly.js (~5 MB). On Windows, pywebview's EdgeChromium
-    # backend renders inline `html=` via NavigateToString, which silently fails
-    # for content over ~2 MB (-> blank window). Write the page to a temp file and
-    # load it by URL, which has no such limit.
-    import tempfile
+    def _open():
+        try:
+            webbrowser.open(url)
+        except Exception:
+            print(f"  (Could not open a browser automatically — please open {url} manually.)", flush=True)
 
-    ui_file = Path(tempfile.gettempdir()) / "sr_terminal_ui.html"
-    ui_file.write_text(build_page(), encoding="utf-8")
-
-    api = Api()
-    window = webview.create_window(
-        "Support / Resistance Terminal",
-        url=ui_file.as_uri(), js_api=api,
-        width=1440, height=920, min_size=(1024, 720),
-    )
-    api.set_window(window)
-    webview.start()
+    if open_browser and not os.environ.get("SR_NO_BROWSER"):
+        threading.Timer(1.5, _open).start()
+    print("\n  Support / Resistance Terminal")
+    print(f"  Open in your browser:  {url}")
+    print("  (Your browser should open automatically. Keep this window open; close it to quit.)\n", flush=True)
+    server = make_server("127.0.0.1", port, create_app(), threaded=True)
+    server.serve_forever()
 
 
+# ---------------------------------------------------------------------------
+# self-test (headless: engine + chart + HTTP routes)
+# ---------------------------------------------------------------------------
 def _synthetic_ohlc(periods: int = 1200) -> pd.DataFrame:
     """Deterministic synthetic 15-min QH-style frame (for --selftest, no files)."""
     rng = np.random.default_rng(7)
@@ -250,11 +296,16 @@ def _synthetic_ohlc(periods: int = 1200) -> pd.DataFrame:
     })
 
 
+def _synthetic_xlsx_bytes() -> bytes:
+    bio = io.BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as w:
+        _synthetic_ohlc().to_excel(w, index=False, sheet_name="Data")
+    return bio.getvalue()
+
+
 def selftest(verbose: bool = True) -> bool:
-    """Exercise the whole bundle headlessly (no window): Excel IO -> engine ->
-    chart -> strict-JSON payload -> UI template. Used to validate the .exe.
-    """
-    import json
+    """Exercise the whole bundle headlessly (no browser): Excel IO -> engine ->
+    chart -> strict-JSON, AND the live HTTP routes via Flask's test client."""
     import tempfile
 
     checks: list[tuple[str, bool, str]] = []
@@ -265,43 +316,44 @@ def selftest(verbose: bool = True) -> bool:
     try:
         with tempfile.TemporaryDirectory() as d:
             storage.set_base_dir(d)
-            xlsx = Path(d) / "selftest.xlsx"
-            with pd.ExcelWriter(xlsx, engine="openpyxl") as w:
-                _synthetic_ohlc().to_excel(w, index=False, sheet_name="Data")
 
-            stats = storage.ingest_excel(xlsx, "SELFTEST", "Data")
+            # --- engine / chart path ---
+            stats = storage.ingest_excel(
+                _write_tmp_xlsx(Path(d) / "selftest.xlsx"), "SELFTEST", "Data")
             check("excel ingest -> master", stats["master_rows_after"] > 0, f"{stats['master_rows_after']} rows")
-            check("no rows dropped", stats["rows_dropped_bad"] == 0)
-
             master = storage.load_master("SELFTEST")
             check("load master (CSV round-trip)", master is not None and len(master) > 0)
-
             final_zones, _, _, tf_data, diag = engine.compute_sr(master, engine.SRConfig())
             check("zones produced", not final_zones.empty, f"{len(final_zones)} zones")
-            check("diagnostics produced", not diag.empty)
-
-            # side must be price-relative: support below price, resistance above
             if not final_zones.empty:
                 cp = float(final_zones["current_price"].iloc[0])
                 sup_ok = (final_zones.loc[final_zones.side == "support", "zone_center"] <= cp).all()
                 res_ok = (final_zones.loc[final_zones.side == "resistance", "zone_center"] >= cp).all()
-                check("zone sides are price-relative", bool(sup_ok and res_ok),
-                      f"support<=cp={bool(sup_ok)}, resistance>=cp={bool(res_ok)}")
-
+                check("zone sides are price-relative", bool(sup_ok and res_ok))
             fig = charting.build_sr_figure(tf_data.get("SELFTEST", {}), final_zones, "SELFTEST", 300)
             check("figure has traces", len(fig.data) > 0, f"{len(fig.data)} traces")
-
-            payload = {
-                "figure": fig.to_json(),
-                "zones": _jsonsafe(charting.zones_to_records(final_zones)),
-                "summary": _jsonsafe(charting.summarize_zones(final_zones)),
-                "diagnostics": _df_records(diag),
-            }
-            s = json.dumps(payload, allow_nan=False)  # strict JSON, the pywebview contract
-            check("strict-JSON payload", len(s) > 1000, f"{len(s)} bytes")
-
             page = build_page()
             check("UI template + plotly.js bundled", "<!--PLOTLY_JS-->" not in page and "Plotly" in page)
+
+            # --- live HTTP routes (the real bridge) ---
+            client = create_app().test_client()
+            r = client.get("/")
+            check("GET / serves page", r.status_code == 200 and b"Plotly" in r.data)
+            r = client.post("/api/preview", content_type="multipart/form-data", data={
+                "instrument": "ST2", "sheet": "Data",
+                "file": (io.BytesIO(_synthetic_xlsx_bytes()), "x.xlsx")})
+            pv = r.get_json()
+            check("POST /api/preview", bool(pv and pv.get("ok")), f"{pv and pv.get('n_total')} rows")
+            r = client.post("/api/commit", json={"token": pv["token"], "keep_keys": []})
+            check("POST /api/commit", bool(r.get_json().get("ok")))
+            r = client.get("/api/instruments")
+            check("GET /api/instruments", "ST2" in (r.get_json() or []))
+            r = client.post("/api/run", json={"instrument": "ST2",
+                                              "settings": {"timeframes": ["15min", "1h", "4h", "1D"]}})
+            rj = r.get_json()
+            check("POST /api/run", bool(rj.get("ok")) and "figure" in rj and "summary" in rj)
+            json.dumps(rj, allow_nan=False)  # strict-JSON over the wire
+            check("run payload is strict-JSON", True)
     except Exception as exc:  # noqa: BLE001
         check(f"EXCEPTION: {exc}", False, traceback.format_exc())
 
@@ -311,6 +363,12 @@ def selftest(verbose: bool = True) -> bool:
             print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f"  ({detail})" if detail else ""))
         print(f"\nself-test: {passed}/{len(checks)} checks passed")
     return passed == len(checks)
+
+
+def _write_tmp_xlsx(path: Path) -> Path:
+    with pd.ExcelWriter(path, engine="openpyxl") as w:
+        _synthetic_ohlc().to_excel(w, index=False, sheet_name="Data")
+    return path
 
 
 if __name__ == "__main__":

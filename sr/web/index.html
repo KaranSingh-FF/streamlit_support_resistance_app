@@ -98,6 +98,7 @@
     <div class="grp">
       <div class="lbl">1 · Add / update data</div>
       <button id="btnPick">Select Excel file…</button>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
       <div class="file" id="pickedFile">No file selected</div>
       <input id="instName" placeholder="Instrument name" />
       <input id="sheetName" value="Data" title="Excel sheet name" />
@@ -173,11 +174,23 @@
 </div>
 
 <script>
-let API = null;
-let pickedPath = null;
+let pickedFile = null;
 let pendingToken = null;
 let lastZones = [], zoneSort = {key:'score', dir:-1};
 let tickDecimals = 2;
+
+async function jget(path){ const r = await fetch('/api/'+path); return r.json(); }
+async function jpost(path, body){
+  const r = await fetch('/api/'+path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})});
+  return r.json();
+}
+function cleanName(fn){
+  let s = fn.replace(/\.[^.]+$/,'');
+  s = s.replace(/charts?/ig,' ').replace(/15\s*min|15m|hourly|daily|data/ig,' ');
+  s = s.replace(/\d{1,2}[.\-_]\d{1,2}[.\-_]\d{2,4}/g,' ').replace(/\d{6,8}/g,' ');
+  s = s.replace(/[_\-]+/g,' ').replace(/\s+/g,' ').trim();
+  return s || fn.replace(/\.[^.]+$/,'');
+}
 
 function $(id){return document.getElementById(id)}
 function setStatus(msg, cls){const s=$('status'); s.className='status '+(cls||''); s.firstElementChild.innerHTML=msg;}
@@ -212,7 +225,7 @@ for(const [s,v] of Object.entries(sliders)){
 }
 
 async function refreshInstruments(selected){
-  const list = await API.list_instruments();
+  const list = await jget('instruments');
   const sel = $('instSelect');
   sel.innerHTML = '';
   list.forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=n;sel.appendChild(o);});
@@ -220,22 +233,27 @@ async function refreshInstruments(selected){
   return list;
 }
 
-async function pickFile(){
-  const r = await API.select_file();
-  if(!r || !r.path){return;}
-  pickedPath = r.path;
-  $('pickedFile').textContent = r.path;
-  if(r.instrument) $('instName').value = r.instrument;
+function pickFile(){ $('fileInput').click(); }
+function onFileChosen(e){
+  pickedFile = (e.target.files && e.target.files[0]) || null;
+  if(!pickedFile) return;
+  $('pickedFile').textContent = pickedFile.name;
+  $('instName').value = cleanName(pickedFile.name);
   setStatus('File selected. Set the instrument name, then “Update master data”.');
 }
 
 async function startUpdate(){
-  if(!pickedPath){setStatus('Pick an Excel file first.', 'err');return;}
+  if(!pickedFile){setStatus('Pick an Excel file first.', 'err');return;}
   const inst = $('instName').value.trim();
   if(!inst){setStatus('Enter an instrument name.', 'err');return;}
   busy('Checking data…');
-  const sheet = $('sheetName').value.trim() || 'Data';
-  const pv = await API.preview_upload(pickedPath, inst, sheet);
+  const fd = new FormData();
+  fd.append('file', pickedFile);
+  fd.append('instrument', inst);
+  fd.append('sheet', $('sheetName').value.trim() || 'Data');
+  let pv;
+  try { pv = await fetch('/api/preview', {method:'POST', body:fd}).then(r=>r.json()); }
+  catch(e){ setStatus('Update failed: '+e, 'err'); return; }
   if(!pv.ok){setStatus('Update failed: '+pv.error, 'err');return;}
   if(pv.n_invalid > 0){ openInvalidDialog(pv); }
   else { await commitUpload(pv.token); }
@@ -265,7 +283,7 @@ async function applyInvalid(){
 
 async function commitUpload(token, keep){
   busy('Updating master data…');
-  const res = await API.commit_upload(token, keep || []);
+  const res = await jpost('commit', {token: token, keep_keys: keep || []});
   if(!res.ok){setStatus('Update failed: '+res.error, 'err');return;}
   const s = res.stats;
   let extra = '';
@@ -279,7 +297,7 @@ async function deleteMaster(){
   const inst = $('instSelect').value;
   if(!inst) return;
   if(!confirm('Delete stored master data for '+inst+'?')) return;
-  await API.delete_master(inst);
+  await jpost('delete', {instrument: inst});
   await refreshInstruments();
   setStatus('Deleted '+inst+'.');
 }
@@ -373,7 +391,7 @@ async function runSR(){
   const inst = $('instSelect').value;
   if(!inst){setStatus('No instrument selected. Add data first.', 'err');return;}
   busy('Calculating support/resistance for '+inst+'…');
-  const res = await API.run_sr(inst, gatherSettings());
+  const res = await jpost('run', {instrument: inst, settings: gatherSettings()});
   if(!res.ok){setStatus('Run failed: '+res.error, 'err');return;}
   const fig = JSON.parse(res.figure);
   Plotly.react('chart', fig.data, fig.layout, {responsive:true, displaylogo:false, scrollZoom:true,
@@ -391,8 +409,8 @@ async function runSR(){
 }
 
 function init(){
-  API = window.pywebview.api;
   $('btnPick').onclick = pickFile;
+  $('fileInput').onchange = onFileChosen;
   $('btnUpdate').onclick = startUpdate;
   $('btnDelete').onclick = deleteMaster;
   $('btnRun').onclick = runSR;
@@ -414,7 +432,7 @@ function init(){
     else setStatus('No data yet — select an Excel file to begin.');
   });
 }
-window.addEventListener('pywebviewready', init);
+document.addEventListener('DOMContentLoaded', init);
 </script>
 </body>
 </html>

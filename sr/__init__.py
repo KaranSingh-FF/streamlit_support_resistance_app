@@ -4,7 +4,7 @@ Layers:
 - ``sr.engine``   : pure S/R math (no IO, no UI) — verified logic.
 - ``sr.storage``  : per-instrument master data on disk (CSV) + dedup/merge.
 - ``sr.charting`` : interactive Plotly candlestick + S/R zone figures.
-- ``sr.desktop``  : embedded desktop app (pywebview).
+- ``sr.desktop``  : local-server app (Flask) that opens the UI in the browser.
 
 The Streamlit app and the desktop app are both thin UIs over these modules.
 """
