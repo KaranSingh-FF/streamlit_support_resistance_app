@@ -12,4 +12,4 @@ The Streamlit app and the desktop app are both thin UIs over these modules.
 from . import engine, storage, charting  # noqa: F401
 
 __all__ = ["engine", "storage", "charting"]
-__version__ = "1.2.0"
+__version__ = "2.0.0"
