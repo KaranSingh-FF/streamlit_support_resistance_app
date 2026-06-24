@@ -1,4 +1,8 @@
-"""Interactive Plotly visuals for support/resistance.
+"""Chart serialization + UI helpers for support/resistance.
+
+The **desktop UI** consumes ``chart_payload`` (candles + reference price/ATR for
+TradingView Lightweight Charts), ``summarize_zones`` (headline cards) and
+``zones_to_records`` (table). ``build_sr_figure`` below is **legacy Streamlit only**.
 
 ``build_sr_figure`` produces a stacked, multi-timeframe candlestick chart with:
 - S/R zones as colour/opacity-graded filled bands (green support, red
@@ -193,29 +197,41 @@ def build_sr_figure(tf_data: dict, final_zones: pd.DataFrame, instrument: str, l
     return fig
 
 
-def summarize_zones(final_zones: pd.DataFrame) -> dict:
-    """Headline numbers for the UI cards: current price, the zone the price is
-    currently *inside* (if any), and the nearest actionable S/R above/below.
+def summarize_zones(final_zones: pd.DataFrame, price_decimals: "int | None" = None) -> dict:
+    """Headline summary for the UI: current price, the zone the price is inside (if any),
+    the nearest ACTIONABLE support/resistance, the top zones per side, plus a plain-English
+    blurb and an if/then map.
 
-    Distance is measured to the zone's near EDGE, not its center: nearest support
-    is ``price - zone_high``, nearest resistance is ``zone_low - price``. A zone
-    that straddles the price (zone_low <= price <= zone_high) is not actionable as
-    support or resistance — it is reported separately as ``current_zone`` and
-    excluded from the nearest cards (otherwise it shows "0.00 ATR away")."""
+    Distance is to the zone's near EDGE (price - zone_high for support, zone_low - price for
+    resistance). 'Actionable' = the closest zone that is non-Low confidence and recently
+    touched (<=90d); if none qualify it falls back to the mathematically closest. A zone the
+    price sits inside is reported as ``current_zone`` and excluded from the nearest cards."""
+    empty = {"current_price": None, "current_atr": None, "nearest_support": None,
+             "nearest_resistance": None, "current_zone": None, "n_support": 0, "n_resistance": 0,
+             "top_support_zones": [], "top_resistance_zones": [], "plain_english": "", "if_then": []}
     if final_zones is None or final_zones.empty:
-        return {"current_price": None, "nearest_support": None, "nearest_resistance": None,
-                "current_zone": None, "n_support": 0, "n_resistance": 0}
+        return empty
     cp = float(final_zones["current_price"].iloc[0])
+    if not np.isfinite(cp):   # never emit "Price is nan." or confuse the cards
+        return empty
     atr = (float(final_zones["current_atr"].iloc[0]) if "current_atr" in final_zones.columns
            and pd.notna(final_zones["current_atr"].iloc[0]) else None)
-
-    inside = (final_zones["zone_low"] <= cp) & (final_zones["zone_high"] >= cp)
+    has = lambda c: c in final_zones.columns
 
     def pack(row, gap):  # gap = price-distance to the zone's near edge
-        return {"center": float(row["zone_center"]), "low": float(row["zone_low"]),
-                "high": float(row["zone_high"]), "score": float(row["score"]),
-                "distance_atr": round(gap / atr, 2) if atr else None}
+        d = {"center": float(row["zone_center"]), "low": float(row["zone_low"]),
+             "high": float(row["zone_high"]), "score": float(row["score"]),
+             "distance_atr": round(gap / atr, 2) if atr else None}
+        if has("confidence"): d["confidence"] = str(row["confidence"])
+        if has("bucket"): d["bucket"] = str(row["bucket"])
+        if has("touches"): d["touches"] = int(row["touches"])
+        if has("volume_at_level") and pd.notna(row["volume_at_level"]):
+            d["volume_at_level"] = float(row["volume_at_level"])
+        if has("days_since_touch"):
+            d["days_since_touch"] = None if pd.isna(row["days_since_touch"]) else round(float(row["days_since_touch"]), 1)
+        return d
 
+    inside = (final_zones["zone_low"] <= cp) & (final_zones["zone_high"] >= cp)
     cur = final_zones[inside]
     current_zone = None
     if not cur.empty:
@@ -223,38 +239,169 @@ def summarize_zones(final_zones: pd.DataFrame) -> dict:
         current_zone = {"center": float(row["zone_center"]), "low": float(row["zone_low"]),
                         "high": float(row["zone_high"]), "score": float(row["score"]),
                         "side": str(row["side"])}
+        if has("confidence"): current_zone["confidence"] = str(row["confidence"])
 
-    # nearest support: zone fully below price, with the highest top edge
+    def actionable(cands, edge_key, pick):  # pick: 'max' (support top edge) / 'min' (resistance bottom edge)
+        if cands.empty:
+            return None
+        use = cands
+        if has("confidence"):  # prefer strong + recent; fall back to closest if none qualify
+            strong = cands[cands["confidence"] != "Low"]
+            if has("days_since_touch"):
+                strong = strong[strong["days_since_touch"].fillna(0) <= 90]
+            if not strong.empty:
+                use = strong
+        r = use.iloc[use[edge_key].argmax() if pick == "max" else use[edge_key].argmin()]
+        gap = (cp - float(r["zone_high"])) if pick == "max" else (float(r["zone_low"]) - cp)
+        return pack(r, gap)
+
     sup = final_zones[~inside & (final_zones["zone_high"] < cp)]
-    nearest_support = (pack(r := sup.iloc[sup["zone_high"].argmax()], cp - float(r["zone_high"]))
-                       if not sup.empty else None)
-    # nearest resistance: zone fully above price, with the lowest bottom edge
     res = final_zones[~inside & (final_zones["zone_low"] > cp)]
-    nearest_resistance = (pack(r := res.iloc[res["zone_low"].argmin()], float(r["zone_low"]) - cp)
-                          if not res.empty else None)
+    nearest_support = actionable(sup, "zone_high", "max")
+    nearest_resistance = actionable(res, "zone_low", "min")
 
-    return {
-        "current_price": cp,
-        "nearest_support": nearest_support,
-        "nearest_resistance": nearest_resistance,
+    sort_key = "confidence_score" if has("confidence_score") else "score"
+
+    def top(side):
+        g = final_zones[final_zones["side"] == side]
+        return zones_to_records(g.sort_values(sort_key, ascending=False).head(5)) if not g.empty else []
+
+    dec = price_decimals if price_decimals is not None else (2 if abs(cp) >= 10 else 4)
+    summary = {
+        "current_price": cp, "current_atr": atr,
+        "nearest_support": nearest_support, "nearest_resistance": nearest_resistance,
         "current_zone": current_zone,
         "n_support": int((final_zones["side"] == "support").sum()),
         "n_resistance": int((final_zones["side"] == "resistance").sum()),
+        "top_support_zones": top("support"), "top_resistance_zones": top("resistance"),
     }
+    # full per-side centers so if/then finds the genuine NEXT level by price (not just within top-5)
+    all_sup = sorted(final_zones.loc[final_zones["side"] == "support", "zone_center"].astype(float))
+    all_res = sorted(final_zones.loc[final_zones["side"] == "resistance", "zone_center"].astype(float))
+    summary["plain_english"] = plain_english(summary, dec)
+    summary["if_then"] = if_then(summary, dec, all_sup, all_res)
+    return summary
+
+
+def _atr_phrase(z):
+    d = z.get("distance_atr") if z else None
+    return "—" if d is None else f"{d:.2f} ATR away"
+
+
+def plain_english(summary: dict, dec: int = 2) -> str:
+    """One short paragraph describing where price sits and the nearest levels."""
+    cp = summary.get("current_price")
+    if cp is None or not np.isfinite(cp):
+        return ""
+    parts = [f"Price is {cp:.{dec}f}."]
+    cz = summary.get("current_zone")
+    if cz:
+        parts.append(f"It is inside a {cz['side']} zone ({cz['low']:.{dec}f}–{cz['high']:.{dec}f}).")
+    ns, nr = summary.get("nearest_support"), summary.get("nearest_resistance")
+    if ns:
+        c = ns.get("confidence")
+        parts.append(f"Nearest support {ns['center']:.{dec}f} ({_atr_phrase(ns)}{', '+c+' confidence' if c else ''}).")
+    if nr:
+        c = nr.get("confidence")
+        parts.append(f"Nearest resistance {nr['center']:.{dec}f} ({_atr_phrase(nr)}{', '+c+' confidence' if c else ''}).")
+    if ns and nr and ns.get("distance_atr") is not None and nr.get("distance_atr") is not None:
+        ds, dr = ns["distance_atr"], nr["distance_atr"]
+        if dr < ds * 0.7:
+            parts.append("Price is closer to resistance — limited room up.")
+        elif ds < dr * 0.7:
+            parts.append("Price is closer to support — limited room down.")
+        else:
+            parts.append("Price sits roughly mid-range between support and resistance.")
+    elif ns and not nr:
+        parts.append("No resistance above within range — open upside.")
+    elif nr and not ns:
+        parts.append("No support below within range — open downside.")
+    return " ".join(parts)
+
+
+def _next_above(centers, c):
+    a = [x for x in centers if x > c + 1e-9]
+    return min(a) if a else None
+
+
+def _next_below(centers, c):
+    b = [x for x in centers if x < c - 1e-9]
+    return max(b) if b else None
+
+
+def if_then(summary: dict, dec: int = 2, sup_centers=None, res_centers=None) -> list:
+    """Conditional map off the nearest levels: break/hold triggers and their consequence.
+    ``sup_centers``/``res_centers`` are the full per-side center lists (so 'next level' is the
+    genuine next by price); they fall back to the top-zone records when not provided."""
+    out = []
+    cp = summary.get("current_price")
+    if cp is None or not np.isfinite(cp):
+        return out
+    if res_centers is None:
+        res_centers = [z["zone_center"] for z in (summary.get("top_resistance_zones") or [])]
+    if sup_centers is None:
+        sup_centers = [z["zone_center"] for z in (summary.get("top_support_zones") or [])]
+    ns, nr = summary.get("nearest_support"), summary.get("nearest_resistance")
+    if nr:
+        nxt = _next_above(res_centers, nr["center"])
+        cons = f"next resistance is {nxt:.{dec}f}" if nxt is not None else "upside opens with little overhead resistance"
+        out.append({"trigger": f"price closes above {nr['high']:.{dec}f}", "action": cons, "kind": "bull"})
+    if ns:
+        nxt = _next_below(sup_centers, ns["center"])
+        cons = f"next support is {nxt:.{dec}f}" if nxt is not None else "downside opens with little support below"
+        out.append({"trigger": f"price closes below {ns['low']:.{dec}f}", "action": cons, "kind": "bear"})
+    cz = summary.get("current_zone")
+    if cz:
+        out.append({"trigger": f"price holds {cz['low']:.{dec}f}–{cz['high']:.{dec}f}",
+                    "action": "that zone should act as " + ("a floor" if cz["side"] == "support" else "a ceiling"),
+                    "kind": "neutral"})
+    return out
+
+
+def chart_payload(tf_data: dict, final_zones: pd.DataFrame, lookback: int = 300) -> dict:
+    """Serialize candles + reference price/ATR for the desktop chart (TradingView
+    Lightweight Charts renders client-side from these arrays). One candle list per
+    present timeframe so the UI can switch timeframe without re-running the engine.
+
+    ``time`` is a UTC epoch-seconds integer (datetime64 is UTC-based). S/R levels
+    are NOT included here — the client derives nearest-N from the ``zones`` records
+    so the 'levels per side' stepper re-filters with no server round-trip."""
+    timeframes = _ordered_timeframes(tf_data)
+    candles: dict[str, list] = {}
+    current_price = None
+    for tf in timeframes:
+        d = tf_data[tf].tail(lookback)[["datetime", "open", "high", "low", "close"]].dropna()
+        # epoch SECONDS, resolution-independent: pandas 3.0 datetimes are us, not ns,
+        # so astype("int64")//1e9 would undershoot 1000x (every bar lands in 1970).
+        t = d["datetime"].values.astype("datetime64[s]").astype("int64").tolist()
+        o, h, lo, c = d["open"].tolist(), d["high"].tolist(), d["low"].tolist(), d["close"].tolist()
+        candles[tf] = [{"time": int(t[i]), "open": float(o[i]), "high": float(h[i]),
+                        "low": float(lo[i]), "close": float(c[i])} for i in range(len(t))]
+        if c:
+            current_price = float(c[-1])
+
+    has_zones = final_zones is not None and not final_zones.empty
+    if has_zones and "current_price" in final_zones.columns:
+        current_price = float(final_zones["current_price"].iloc[0])
+    current_atr = None
+    if has_zones and "current_atr" in final_zones.columns and pd.notna(final_zones["current_atr"].iloc[0]):
+        current_atr = float(final_zones["current_atr"].iloc[0])
+
+    default_tf = "1D" if "1D" in timeframes else (timeframes[-1] if timeframes else None)
+    return {"timeframes": timeframes, "candles": candles, "current_price": current_price,
+            "current_atr": current_atr, "default_tf": default_tf}
 
 
 def zones_to_records(final_zones: pd.DataFrame) -> list[dict]:
     if final_zones is None or final_zones.empty:
         return []
     cols = ["side", "zone_center", "zone_low", "zone_high", "score", "touches",
-            "timeframes", "distance_atr", "current_price", "last_touch"]
+            "volume_at_level", "days_since_touch", "confidence",
+            "confidence_score", "bucket", "timeframes", "timeframe_count",
+            "distance_atr", "current_price", "last_touch"]
     df = final_zones[[c for c in cols if c in final_zones.columns]].copy()
+    if "volume_at_level" in df.columns:
+        df["volume_at_level"] = df["volume_at_level"].fillna(0.0)
     if "last_touch" in df.columns:
         df["last_touch"] = df["last_touch"].astype(str)
     return df.to_dict(orient="records")
-
-
-def plotlyjs_script() -> str:
-    from plotly.offline import get_plotlyjs
-
-    return f"<script type='text/javascript'>{get_plotlyjs()}</script>"

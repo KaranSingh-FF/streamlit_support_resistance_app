@@ -343,3 +343,102 @@ def test_tick_snapping_keeps_side_price_relative_off_grid():
     cp = float(fz["current_price"].iloc[0])
     assert (fz.loc[fz.side == "support", "zone_center"] <= cp).all()
     assert (fz.loc[fz.side == "resistance", "zone_center"] >= cp).all()
+
+
+# --- zero-config inference --------------------------------------------------
+def test_srconfig_defaults_auto_off():
+    cfg = engine.SRConfig()
+    assert cfg.auto is False and cfg.overrides == set()  # tests/engine unchanged unless auto is set
+
+
+def test_infer_tick_size_decimals():
+    two = pd.DataFrame({"open": [71.50], "high": [71.55], "low": [71.45], "close": [71.52]})
+    assert engine.infer_tick_size(two) == 0.01
+    ints = pd.DataFrame({"open": [10], "high": [12], "low": [8], "close": [11]})
+    assert engine.infer_tick_size(ints) == 1.0
+    one = pd.DataFrame({"open": [5.0], "high": [5.0], "low": [5.0], "close": [5.0]})
+    assert engine.infer_tick_size(one) == 0.0  # <2 distinct prices -> snapping off
+
+
+def test_infer_tick_size_negative_spread_positive():
+    df = pd.DataFrame({"open": [-0.05, -0.03], "high": [-0.01, -0.02],
+                       "low": [-0.08, -0.05], "close": [-0.04, -0.03]})
+    t = engine.infer_tick_size(df)
+    assert t > 0 and t <= 0.01
+
+
+def test_infer_min_score_sparse_is_zero():
+    assert engine.infer_min_score(pd.DataFrame({"score": [5.0, 6.0, 7.0]})) == 0.0
+    assert engine.infer_min_score(pd.DataFrame()) == 0.0
+
+
+def test_infer_max_distance_clamped():
+    tfz = pd.DataFrame([dict(zone_center=c, current_atr=0.2) for c in (4.0, 4.5, 5.0, 5.5, 6.0)])
+    assert 4.0 <= engine.infer_max_distance(tfz) <= 20.0
+    assert engine.infer_max_distance(pd.DataFrame()) == 10.0
+    zero_atr = pd.DataFrame([dict(zone_center=4.0, current_atr=0.0), dict(zone_center=5.0, current_atr=0.0)])
+    assert engine.infer_max_distance(zero_atr) == 10.0
+
+
+def test_infer_config_reports_and_respects_overrides():
+    cfg, rep = engine.infer_config(descending(), engine.SRConfig(timeframes=["1h", "4h", "1D"], auto=True))
+    assert "tick_size" in rep and "lookback" in rep
+    assert cfg.lookback >= 50 and cfg.tick_size >= 0
+    cfg2, rep2 = engine.infer_config(
+        descending(), engine.SRConfig(timeframes=["1h", "4h", "1D"], auto=True,
+                                      overrides={"tick_size"}, tick_size=0.5))
+    assert "tick_size" not in rep2 and cfg2.tick_size == 0.5  # pinned key is not overwritten
+
+
+# --- enrichment: confidence, recency, bucket, volume, wide-zone split -------
+def test_final_zones_have_enrichment_columns():
+    fz = engine.compute_sr(descending(), engine.SRConfig(timeframes=["1h", "4h", "1D"]))[0]
+    assert not fz.empty
+    for col in ("bucket", "confidence", "recency_weight", "confidence_score",
+                "volume_at_level", "days_since_touch"):
+        assert col in fz.columns
+    assert set(fz["bucket"].unique()) <= {"active", "nearby", "historical"}
+    assert set(fz["confidence"].unique()) <= {"High", "Medium", "Low"}
+    assert fz["recency_weight"].between(0, 1).all()
+    assert fz["confidence_score"].between(0, 1).all()
+    assert (fz["volume_at_level"] >= 0).all()
+
+
+def test_volume_absent_is_zero_not_null():
+    df = descending()
+    df["volume"] = 0
+    fz = engine.compute_sr(df, engine.SRConfig(timeframes=["1h", "4h", "1D"]))[0]
+    if not fz.empty:
+        assert (fz["volume_at_level"] == 0.0).all() and fz["volume_at_level"].notna().all()
+
+
+def test_wide_zone_splits_and_conserves_touches():
+    cp, ts = 5.0, pd.Timestamp("2026-01-01")
+    # 9 overlapping resistance levels spanning ~4.6 ATR (atr=1.0) -> one cluster, must split
+    centers = [20.0, 20.5, 21.0, 21.5, 22.0, 22.5, 23.0, 23.5, 24.0]
+    tfz = pd.DataFrame([dict(
+        instrument="X", timeframe="1h", side="resistance", zone_center=c, zone_low=c - 0.3,
+        zone_high=c + 0.3, touches=2, first_touch=ts, last_touch=ts, atr=1.0,
+        current_price=cp, current_atr=1.0) for c in centers])
+    out = engine.score_and_merge(tfz, engine.DEFAULT_TIMEFRAME_WEIGHTS, 0.0, 1e9, 0.35)
+    res = out[out.side == "resistance"]
+    assert len(res) >= 2                              # the wide span was split
+    assert (res["zone_high"] > res["zone_low"]).all()  # no inverted sub-zones
+    assert int(res["touches"].sum()) == 18             # touches conserved (9 levels x 2)
+
+
+def test_bucket_active_and_historical():
+    cp = 5.0
+    recent, old = pd.Timestamp("2026-06-24"), pd.Timestamp("2026-01-01")  # ~175 days apart
+    tfz = pd.DataFrame([
+        dict(instrument="X", timeframe="1D", side="resistance", zone_center=5.3, zone_low=5.2,
+             zone_high=5.4, touches=3, first_touch=recent, last_touch=recent, atr=0.5,
+             current_price=cp, current_atr=0.5),
+        dict(instrument="X", timeframe="1D", side="support", zone_center=4.0, zone_low=3.9,
+             zone_high=4.1, touches=2, first_touch=old, last_touch=old, atr=0.5,
+             current_price=cp, current_atr=0.5),
+    ])
+    out = engine.score_and_merge(tfz, engine.DEFAULT_TIMEFRAME_WEIGHTS, 0.0, 1e9, 0.35)
+    by_side = {r["side"]: r for _, r in out.iterrows()}
+    assert by_side["resistance"]["bucket"] == "active"      # near (0.4 ATR) + freshest touch
+    assert by_side["support"]["bucket"] == "historical"     # ~175 days stale

@@ -1,0 +1,1574 @@
+{
+    "schema_version": 1,
+    "stream": {
+        "provider": "Lightstreamer",
+        "source_script": "Lightstreamer_Python/LS_L1.py",
+        "item_suffix": "-2",
+        "id_field": "instrumentId"
+    },
+    "products": {
+        "Brent": {
+            "display_name": "Brent",
+            "enabled": true,
+            "instruments": [
+                {
+                    "tenor": "M26-N26",
+                    "instrument_id": "8914890790769645064",
+                    "instrument_type": "1MS",
+                    "label": "M26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N26",
+                    "instrument_id": "805633113204488608",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "N26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N26-Q26",
+                    "instrument_id": "9168260378464932062",
+                    "instrument_type": "1MS",
+                    "label": "N26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N26",
+                    "instrument_id": "1695574783542169976",
+                    "instrument_type": "FLY",
+                    "label": "N26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q26",
+                    "instrument_id": "18442934843091916954",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Q26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q26-U26",
+                    "instrument_id": "10122838698664355590",
+                    "instrument_type": "1MS",
+                    "label": "Q26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q26",
+                    "instrument_id": "7354252180080490739",
+                    "instrument_type": "FLY",
+                    "label": "Q26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U26",
+                    "instrument_id": "17251438917134672331",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "U26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U26-V26",
+                    "instrument_id": "6987460243378758477",
+                    "instrument_type": "1MS",
+                    "label": "U26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U26",
+                    "instrument_id": "13162267123453061535",
+                    "instrument_type": "FLY",
+                    "label": "U26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V26",
+                    "instrument_id": "7173146599809127134",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "V26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V26-X26",
+                    "instrument_id": "7379742546910687603",
+                    "instrument_type": "1MS",
+                    "label": "V26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V26",
+                    "instrument_id": "10675062809496446768",
+                    "instrument_type": "FLY",
+                    "label": "V26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X26",
+                    "instrument_id": "9341335512644243006",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "X26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X26-Z26",
+                    "instrument_id": "1377494286175660967",
+                    "instrument_type": "1MS",
+                    "label": "X26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X26",
+                    "instrument_id": "3968013449921209583",
+                    "instrument_type": "FLY",
+                    "label": "X26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z26",
+                    "instrument_id": "9181805969070617581",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z26-F27",
+                    "instrument_id": "4114310256945520658",
+                    "instrument_type": "1MS",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z26",
+                    "instrument_id": "18107937958911790243",
+                    "instrument_type": "FLY",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27",
+                    "instrument_id": "8010979740228774226",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27-G27",
+                    "instrument_id": "5434860032608227077",
+                    "instrument_type": "1MS",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27",
+                    "instrument_id": "1620771384042427193",
+                    "instrument_type": "FLY",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27",
+                    "instrument_id": "11903207491029642965",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27-H27",
+                    "instrument_id": "11400463675466456130",
+                    "instrument_type": "1MS",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27",
+                    "instrument_id": "5801756928940287285",
+                    "instrument_type": "FLY",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27",
+                    "instrument_id": "13459849915332973066",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27-J27",
+                    "instrument_id": "11011891045162426788",
+                    "instrument_type": "1MS",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27",
+                    "instrument_id": "910761923208514230",
+                    "instrument_type": "FLY",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27",
+                    "instrument_id": "9929767544417831255",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27-K27",
+                    "instrument_id": "5928898978446316492",
+                    "instrument_type": "1MS",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27",
+                    "instrument_id": "4880410399963029099",
+                    "instrument_type": "FLY",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27",
+                    "instrument_id": "16854239091594796406",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27-M27",
+                    "instrument_id": "5323673871278567133",
+                    "instrument_type": "1MS",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27",
+                    "instrument_id": "1815559691989200056",
+                    "instrument_type": "FLY",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27",
+                    "instrument_id": "10230310368854281301",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "M27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27-N27",
+                    "instrument_id": "15698856403343500998",
+                    "instrument_type": "1MS",
+                    "label": "M27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27",
+                    "instrument_id": "4231667949820028439",
+                    "instrument_type": "FLY",
+                    "label": "M27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N27",
+                    "instrument_id": "13383332571119313441",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "N27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N27-Q27",
+                    "instrument_id": "1164244752292016425",
+                    "instrument_type": "1MS",
+                    "label": "N27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N27",
+                    "instrument_id": "12885549565098967130",
+                    "instrument_type": "FLY",
+                    "label": "N27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q27",
+                    "instrument_id": "1968445212564855414",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Q27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q27-U27",
+                    "instrument_id": "5202288386152288740",
+                    "instrument_type": "1MS",
+                    "label": "Q27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q27",
+                    "instrument_id": "10570943083557307548",
+                    "instrument_type": "FLY",
+                    "label": "Q27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U27",
+                    "instrument_id": "125030885220576572",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "U27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U27-V27",
+                    "instrument_id": "14968678886150461364",
+                    "instrument_type": "1MS",
+                    "label": "U27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U27",
+                    "instrument_id": "8387315345017459738",
+                    "instrument_type": "FLY",
+                    "label": "U27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V27",
+                    "instrument_id": "4326240537478984533",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "V27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V27-X27",
+                    "instrument_id": "12271839801329507947",
+                    "instrument_type": "1MS",
+                    "label": "V27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V27",
+                    "instrument_id": "3849555546990728812",
+                    "instrument_type": "FLY",
+                    "label": "V27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X27",
+                    "instrument_id": "15231013154408142818",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "X27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X27-Z27",
+                    "instrument_id": "204715045504244931",
+                    "instrument_type": "1MS",
+                    "label": "X27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X27",
+                    "instrument_id": "10964311660643493639",
+                    "instrument_type": "FLY",
+                    "label": "X27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z27",
+                    "instrument_id": "6630253675007251330",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Z27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z27",
+                    "instrument_id": "953394811134923085",
+                    "instrument_type": "FLY",
+                    "label": "Z27",
+                    "enabled": true
+                }
+            ]
+        },
+        "WTI": {
+            "display_name": "WTI",
+            "enabled": true,
+            "instruments": [
+                {
+                    "tenor": "M26-N26",
+                    "instrument_id": "16639294537365043985",
+                    "instrument_type": "1MS",
+                    "label": "M26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N26",
+                    "instrument_id": "4969682236337453068",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "N26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N26-Q26",
+                    "instrument_id": "6204628461083876566",
+                    "instrument_type": "1MS",
+                    "label": "N26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N26",
+                    "instrument_id": "3175822910376478800",
+                    "instrument_type": "FLY",
+                    "label": "N26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q26",
+                    "instrument_id": "4329255744587456735",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Q26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q26-U26",
+                    "instrument_id": "8735940826911864015",
+                    "instrument_type": "1MS",
+                    "label": "Q26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q26",
+                    "instrument_id": "10098303812158228659",
+                    "instrument_type": "FLY",
+                    "label": "Q26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U26",
+                    "instrument_id": "4408971914360497881",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "U26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U26-V26",
+                    "instrument_id": "7221067604782340594",
+                    "instrument_type": "1MS",
+                    "label": "U26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U26",
+                    "instrument_id": "18095095786788577094",
+                    "instrument_type": "FLY",
+                    "label": "U26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V26",
+                    "instrument_id": "14365898999095677546",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "V26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V26-X26",
+                    "instrument_id": "9319298810941532358",
+                    "instrument_type": "1MS",
+                    "label": "V26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V26",
+                    "instrument_id": "8773359129495829223",
+                    "instrument_type": "FLY",
+                    "label": "V26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X26",
+                    "instrument_id": "2694060352009495114",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "X26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X26-Z26",
+                    "instrument_id": "1300982551871513888",
+                    "instrument_type": "1MS",
+                    "label": "X26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X26",
+                    "instrument_id": "5350941247928382860",
+                    "instrument_type": "FLY",
+                    "label": "X26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z26",
+                    "instrument_id": "8830866337577727292",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z26-F27",
+                    "instrument_id": "543741535855301483",
+                    "instrument_type": "1MS",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z26",
+                    "instrument_id": "11075210079476785728",
+                    "instrument_type": "FLY",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27",
+                    "instrument_id": "408151309787888712",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27-G27",
+                    "instrument_id": "10453510832353997502",
+                    "instrument_type": "1MS",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27",
+                    "instrument_id": "8865648345555121087",
+                    "instrument_type": "FLY",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27",
+                    "instrument_id": "16162379674588164239",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27-H27",
+                    "instrument_id": "572245480980265956",
+                    "instrument_type": "1MS",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27",
+                    "instrument_id": "12977630634378968649",
+                    "instrument_type": "FLY",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27",
+                    "instrument_id": "5994998214693537085",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27-J27",
+                    "instrument_id": "9484020558377341140",
+                    "instrument_type": "1MS",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27",
+                    "instrument_id": "9398942993460674080",
+                    "instrument_type": "FLY",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27",
+                    "instrument_id": "2325896812530847386",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27-K27",
+                    "instrument_id": "2772249243202761798",
+                    "instrument_type": "1MS",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27",
+                    "instrument_id": "10009357655718566934",
+                    "instrument_type": "FLY",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27",
+                    "instrument_id": "1272611946241795032",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27-M27",
+                    "instrument_id": "5354962139833693862",
+                    "instrument_type": "1MS",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27",
+                    "instrument_id": "4099929989424539017",
+                    "instrument_type": "FLY",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27",
+                    "instrument_id": "7275789386303261372",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "M27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27-N27",
+                    "instrument_id": "13767777237658895249",
+                    "instrument_type": "1MS",
+                    "label": "M27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27",
+                    "instrument_id": "18139614395729135318",
+                    "instrument_type": "FLY",
+                    "label": "M27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N27",
+                    "instrument_id": "14971477563712164951",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "N27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N27-Q27",
+                    "instrument_id": "16236204944251317658",
+                    "instrument_type": "1MS",
+                    "label": "N27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N27",
+                    "instrument_id": "423723624669816377",
+                    "instrument_type": "FLY",
+                    "label": "N27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q27",
+                    "instrument_id": "11111653703951490285",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Q27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q27-U27",
+                    "instrument_id": "7505139816369766421",
+                    "instrument_type": "1MS",
+                    "label": "Q27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q27",
+                    "instrument_id": "16729711071061766258",
+                    "instrument_type": "FLY",
+                    "label": "Q27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U27",
+                    "instrument_id": "8294285278928076688",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "U27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U27-V27",
+                    "instrument_id": "11962621451232241120",
+                    "instrument_type": "1MS",
+                    "label": "U27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U27",
+                    "instrument_id": "11948521647431104102",
+                    "instrument_type": "FLY",
+                    "label": "U27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V27",
+                    "instrument_id": "2567640804650041104",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "V27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V27-X27",
+                    "instrument_id": "657742799048791708",
+                    "instrument_type": "1MS",
+                    "label": "V27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V27",
+                    "instrument_id": "2782044142903940130",
+                    "instrument_type": "FLY",
+                    "label": "V27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X27",
+                    "instrument_id": "17068477420617048997",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "X27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X27-Z27",
+                    "instrument_id": "11459796163408204785",
+                    "instrument_type": "1MS",
+                    "label": "X27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X27",
+                    "instrument_id": "9896756668151668470",
+                    "instrument_type": "FLY",
+                    "label": "X27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z27",
+                    "instrument_id": "15587374726761755425",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Z27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z27",
+                    "instrument_id": "14635858895802937622",
+                    "instrument_type": "FLY",
+                    "label": "Z27",
+                    "enabled": true
+                }
+            ]
+        },
+        "Gasoil": {
+            "display_name": "Gasoil",
+            "enabled": true,
+            "instruments": [
+                {
+                    "tenor": "N26",
+                    "instrument_id": null,
+                    "instrument_type": "OUTRIGHT",
+                    "label": "N26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "Q26",
+                    "instrument_id": null,
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Q26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "U26",
+                    "instrument_id": null,
+                    "instrument_type": "OUTRIGHT",
+                    "label": "U26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "V26",
+                    "instrument_id": null,
+                    "instrument_type": "OUTRIGHT",
+                    "label": "V26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "X26",
+                    "instrument_id": null,
+                    "instrument_type": "OUTRIGHT",
+                    "label": "X26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "Z26",
+                    "instrument_id": "6935775986902211080",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27",
+                    "instrument_id": "3838641066032741273",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27",
+                    "instrument_id": "6261275319383864272",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27",
+                    "instrument_id": "8044916401863578894",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27",
+                    "instrument_id": "3933380746788625989",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27",
+                    "instrument_id": "10990342327056150551",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27",
+                    "instrument_id": "689103728558128265",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "M27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N27",
+                    "instrument_id": "10114814687990080075",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "N27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q27",
+                    "instrument_id": "9641473845066254233",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Q27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U27",
+                    "instrument_id": "10048728377838170559",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "U27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V27",
+                    "instrument_id": "9316313148352728877",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "V27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X27",
+                    "instrument_id": "892974837401411088",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "X27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z27",
+                    "instrument_id": "8194241233555113380",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Z27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N26-Q26",
+                    "instrument_id": null,
+                    "instrument_type": "1MS",
+                    "label": "N26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "Q26-U26",
+                    "instrument_id": null,
+                    "instrument_type": "1MS",
+                    "label": "Q26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "U26-V26",
+                    "instrument_id": null,
+                    "instrument_type": "1MS",
+                    "label": "U26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "V26-X26",
+                    "instrument_id": null,
+                    "instrument_type": "1MS",
+                    "label": "V26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "X26-Z26",
+                    "instrument_id": null,
+                    "instrument_type": "1MS",
+                    "label": "X26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "Z26-F27",
+                    "instrument_id": "16931139235829926714",
+                    "instrument_type": "1MS",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27-G27",
+                    "instrument_id": "10895200218122855210",
+                    "instrument_type": "1MS",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27-H27",
+                    "instrument_id": "5838961495864542433",
+                    "instrument_type": "1MS",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27-J27",
+                    "instrument_id": "6271255642317276072",
+                    "instrument_type": "1MS",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27-K27",
+                    "instrument_id": "5943437728965689437",
+                    "instrument_type": "1MS",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27-M27",
+                    "instrument_id": "12820072951672128462",
+                    "instrument_type": "1MS",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27-N27",
+                    "instrument_id": "13852824230931588890",
+                    "instrument_type": "1MS",
+                    "label": "M27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N27-Q27",
+                    "instrument_id": "8744066864647175080",
+                    "instrument_type": "1MS",
+                    "label": "N27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q27-U27",
+                    "instrument_id": "15982847656760620346",
+                    "instrument_type": "1MS",
+                    "label": "Q27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U27-V27",
+                    "instrument_id": "18425344424134714080",
+                    "instrument_type": "1MS",
+                    "label": "U27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V27-X27",
+                    "instrument_id": "8677338412138619356",
+                    "instrument_type": "1MS",
+                    "label": "V27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X27-Z27",
+                    "instrument_id": "3338153102172917573",
+                    "instrument_type": "1MS",
+                    "label": "X27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z27-F28",
+                    "instrument_id": "9202679964095976159",
+                    "instrument_type": "1MS",
+                    "label": "Z27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N26",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "N26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "Q26",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "Q26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "U26",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "U26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "V26",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "V26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "X26",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "X26",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "Z26",
+                    "instrument_id": "9082053601512401571",
+                    "instrument_type": "FLY",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27",
+                    "instrument_id": "10269933594549144332",
+                    "instrument_type": "FLY",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27",
+                    "instrument_id": "5123114801558228478",
+                    "instrument_type": "FLY",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27",
+                    "instrument_id": "6697278946817229856",
+                    "instrument_type": "FLY",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27",
+                    "instrument_id": "5945389955662671245",
+                    "instrument_type": "FLY",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27",
+                    "instrument_id": "4582288618109761518",
+                    "instrument_type": "FLY",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27",
+                    "instrument_id": "4689080244473068739",
+                    "instrument_type": "FLY",
+                    "label": "M27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N27",
+                    "instrument_id": "16786771027350592672",
+                    "instrument_type": "FLY",
+                    "label": "N27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "Q27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "U27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "U27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "V27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "V27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "X27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "X27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "Z27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "Z27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                }
+            ]
+        },
+        "HeatingOil": {
+            "display_name": "Heating Oil",
+            "enabled": true,
+            "instruments": [
+                {
+                    "tenor": "N26",
+                    "instrument_id": "16971210301067959620",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "N26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q26",
+                    "instrument_id": "8902599969925585048",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Q26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U26",
+                    "instrument_id": "6140043313226166756",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "U26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V26",
+                    "instrument_id": "1879699566955683308",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "V26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X26",
+                    "instrument_id": "17638903809092112028",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "X26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z26",
+                    "instrument_id": "12846944140729213455",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27",
+                    "instrument_id": "13626107987362809914",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27",
+                    "instrument_id": "833086782181438555",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27",
+                    "instrument_id": "1798879469349843099",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27",
+                    "instrument_id": "2825902668578116434",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27",
+                    "instrument_id": "17986728585963902950",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27",
+                    "instrument_id": "6129060584454320972",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "M27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N27",
+                    "instrument_id": "18355307838838219362",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "N27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q27",
+                    "instrument_id": "960666644823769368",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Q27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U27",
+                    "instrument_id": "14328196769826687024",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "U27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V27",
+                    "instrument_id": "2021006509761038317",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "V27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X27",
+                    "instrument_id": "8886436284054856404",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "X27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z27",
+                    "instrument_id": "5033807949204142739",
+                    "instrument_type": "OUTRIGHT",
+                    "label": "Z27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N26-Q26",
+                    "instrument_id": "8655718802174479984",
+                    "instrument_type": "1MS",
+                    "label": "N26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q26-U26",
+                    "instrument_id": "7526135577323189237",
+                    "instrument_type": "1MS",
+                    "label": "Q26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U26-V26",
+                    "instrument_id": "17280652414044940783",
+                    "instrument_type": "1MS",
+                    "label": "U26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V26-X26",
+                    "instrument_id": "5338876357395465053",
+                    "instrument_type": "1MS",
+                    "label": "V26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X26-Z26",
+                    "instrument_id": "7956784319199780794",
+                    "instrument_type": "1MS",
+                    "label": "X26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z26-F27",
+                    "instrument_id": "2343616067349002177",
+                    "instrument_type": "1MS",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27-G27",
+                    "instrument_id": "16612650867655191036",
+                    "instrument_type": "1MS",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27-H27",
+                    "instrument_id": "9882787506729115255",
+                    "instrument_type": "1MS",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27-J27",
+                    "instrument_id": "13717030997346573897",
+                    "instrument_type": "1MS",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27-K27",
+                    "instrument_id": "12406993913714446406",
+                    "instrument_type": "1MS",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27-M27",
+                    "instrument_id": "455919106387883667",
+                    "instrument_type": "1MS",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27-N27",
+                    "instrument_id": "4649525842946564986",
+                    "instrument_type": "1MS",
+                    "label": "M27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N27-Q27",
+                    "instrument_id": "7955322627478936110",
+                    "instrument_type": "1MS",
+                    "label": "N27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q27-U27",
+                    "instrument_id": "3331484984237692775",
+                    "instrument_type": "1MS",
+                    "label": "Q27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U27-V27",
+                    "instrument_id": "1064651221839348404",
+                    "instrument_type": "1MS",
+                    "label": "U27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V27-X27",
+                    "instrument_id": "12040468373008705015",
+                    "instrument_type": "1MS",
+                    "label": "V27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X27-Z27",
+                    "instrument_id": "1281441911317410699",
+                    "instrument_type": "1MS",
+                    "label": "X27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z27-F28",
+                    "instrument_id": "3458345534197608770",
+                    "instrument_type": "1MS",
+                    "label": "Z27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "N26",
+                    "instrument_id": "17793782652796174461",
+                    "instrument_type": "FLY",
+                    "label": "N26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Q26",
+                    "instrument_id": "1756486509151042377",
+                    "instrument_type": "FLY",
+                    "label": "Q26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "U26",
+                    "instrument_id": "13908182217970001690",
+                    "instrument_type": "FLY",
+                    "label": "U26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "V26",
+                    "instrument_id": "9961742185332497729",
+                    "instrument_type": "FLY",
+                    "label": "V26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "X26",
+                    "instrument_id": "16768004686498588390",
+                    "instrument_type": "FLY",
+                    "label": "X26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "Z26",
+                    "instrument_id": "5113535661299282148",
+                    "instrument_type": "FLY",
+                    "label": "Z26",
+                    "enabled": true
+                },
+                {
+                    "tenor": "F27",
+                    "instrument_id": "4103499487119062757",
+                    "instrument_type": "FLY",
+                    "label": "F27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "G27",
+                    "instrument_id": "10353000578802713637",
+                    "instrument_type": "FLY",
+                    "label": "G27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "H27",
+                    "instrument_id": "11173416547933722174",
+                    "instrument_type": "FLY",
+                    "label": "H27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "J27",
+                    "instrument_id": "5332858559444624879",
+                    "instrument_type": "FLY",
+                    "label": "J27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "K27",
+                    "instrument_id": "6978638544639174157",
+                    "instrument_type": "FLY",
+                    "label": "K27",
+                    "enabled": true
+                },
+                {
+                    "tenor": "M27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "M27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "N27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "N27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "Q27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "Q27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "U27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "U27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "V27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "V27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "X27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "X27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                },
+                {
+                    "tenor": "Z27",
+                    "instrument_id": null,
+                    "instrument_type": "FLY",
+                    "label": "Z27",
+                    "enabled": false,
+                    "note": "Instrument Not Found"
+                }
+            ]
+        }
+    }
+}

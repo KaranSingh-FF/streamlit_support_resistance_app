@@ -20,6 +20,7 @@ import pandas as pd
 DEFAULT_TIMEFRAMES = ["15min", "1h", "4h", "1D", "1W"]
 DEFAULT_SWING_WINDOWS = {"15min": 8, "1h": 6, "4h": 5, "1D": 4, "1W": 3}
 DEFAULT_TIMEFRAME_WEIGHTS = {"15min": 1.0, "1h": 2.0, "4h": 3.0, "1D": 4.0, "1W": 5.0}
+MAX_ZONE_ATR = 1.5   # merged zones wider than this (in ATR) are split into equal sub-zones
 
 
 @dataclass
@@ -38,6 +39,8 @@ class SRConfig:
     use_close_for_swings: bool = False  # detect swings on closes (ignore wicks) instead of high/low
     swing_windows: dict = field(default_factory=lambda: dict(DEFAULT_SWING_WINDOWS))
     timeframe_weights: dict = field(default_factory=lambda: dict(DEFAULT_TIMEFRAME_WEIGHTS))
+    auto: bool = False                            # desktop sets True; engine/tests default False = no behavior change
+    overrides: set = field(default_factory=set)   # tunable keys the user pinned (auto inference skips these)
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +292,44 @@ def score_and_merge(zones_df: pd.DataFrame, timeframe_weights: dict, min_score: 
     d["side"] = np.where(d["zone_center"] <= d["current_price"], "support", "resistance")
 
     final = []
+
+    def _emit(members, inst):
+        """Snap + score one (sub-)cluster and append the final-zone dict."""
+        weights = np.array([max(x["base_score"], 0.1) for x in members])
+        centers = np.array([x["zone_center"] for x in members])
+        center = float(np.average(centers, weights=weights))
+        raw_low = min(x["zone_low"] for x in members)
+        raw_high = max(x["zone_high"] for x in members)
+        if tick_size and tick_size > 0:
+            center = snap_to_tick(center, tick_size, "round")
+            zlow = snap_to_tick(raw_low, tick_size, "floor")
+            zhigh = snap_to_tick(raw_high, tick_size, "ceil")
+            if zhigh - zlow < 2 * tick_size:
+                zlow = round(center - tick_size, 10)
+                zhigh = round(center + tick_size, 10)
+            center = min(max(center, zlow), zhigh)
+        else:
+            zlow, zhigh = raw_low, raw_high
+        tfs = sorted(set(x["timeframe"] for x in members), key=lambda z: timeframe_weights.get(z, 0), reverse=True)
+        score = float(sum(x["base_score"] for x in members)) + max(0, len(tfs) - 1) * 2.0
+        current_price = float(members[-1]["current_price"])
+        current_atr = float(members[-1]["current_atr"])
+        final.append({
+            "instrument": inst,
+            # side from the SNAPPED center, so support<=price / resistance>=price holds
+            # even when snapping nudges a zone across the current price.
+            "side": "support" if center <= current_price else "resistance",
+            "zone_low": zlow, "zone_high": zhigh, "zone_center": center,
+            "score": round(score, 2),
+            "touches": int(sum(x["touches"] for x in members)),
+            "timeframes": ", ".join(tfs),
+            "timeframe_count": len(tfs),
+            "last_touch": max(x["last_touch"] for x in members),
+            "current_price": current_price,
+            "current_atr": current_atr,   # kept so the cards can measure edge-distance in ATR
+            "distance_atr": round(abs(center - current_price) / current_atr, 2) if current_atr else np.nan,
+        })
+
     for (inst, side), g in d.sort_values("zone_center").groupby(["instrument", "side"]):
         # Sort by zone_low (not center): the greedy running-max-high overlap sweep
         # below is only correct when intervals are visited in start-edge order.
@@ -318,53 +359,104 @@ def score_and_merge(zones_df: pd.DataFrame, timeframe_weights: dict, min_score: 
         clusters.append(cur)
 
         for cl in clusters:
-            weights = np.array([max(x["base_score"], 0.1) for x in cl])
-            centers = np.array([x["zone_center"] for x in cl])
-            center = float(np.average(centers, weights=weights))
             raw_low = min(x["zone_low"] for x in cl)
             raw_high = max(x["zone_high"] for x in cl)
-            # Snap the zone to the tradeable tick grid so levels are real prices,
-            # and guarantee the zone spans at least one tick on each side.
-            if tick_size and tick_size > 0:
-                center = snap_to_tick(center, tick_size, "round")
-                zlow = snap_to_tick(raw_low, tick_size, "floor")
-                zhigh = snap_to_tick(raw_high, tick_size, "ceil")
-                if zhigh - zlow < 2 * tick_size:
-                    zlow = round(center - tick_size, 10)
-                    zhigh = round(center + tick_size, 10)
-                center = min(max(center, zlow), zhigh)
+            width_atr = (raw_high - raw_low) / median_atr if median_atr else 0.0
+            n_parts = int(np.ceil(width_atr / MAX_ZONE_ATR)) if width_atr > MAX_ZONE_ATR else 1
+            if n_parts > 1:   # split a too-wide zone into equal sub-zones, each member in exactly one
+                edges = np.linspace(raw_low, raw_high, n_parts + 1)
+                bins = np.clip(np.searchsorted(edges, [x["zone_center"] for x in cl], side="right") - 1,
+                               0, n_parts - 1)
+                for k in range(n_parts):
+                    members = [cl[j] for j in range(len(cl)) if bins[j] == k]
+                    if members:
+                        _emit(members, inst)
             else:
-                zlow, zhigh = raw_low, raw_high
-            tfs = sorted(set(x["timeframe"] for x in cl), key=lambda z: timeframe_weights.get(z, 0), reverse=True)
-            score = float(sum(x["base_score"] for x in cl)) + max(0, len(tfs) - 1) * 2.0
-            current_price = float(cl[-1]["current_price"])
-            current_atr = float(cl[-1]["current_atr"])
-            final.append({
-                "instrument": inst,
-                # side from the SNAPPED center, so support<=price / resistance>=price
-                # holds even when snapping nudges a zone across the current price.
-                "side": "support" if center <= current_price else "resistance",
-                "zone_low": zlow,
-                "zone_high": zhigh,
-                "zone_center": center,
-                "score": round(score, 2),
-                "touches": int(sum(x["touches"] for x in cl)),
-                "timeframes": ", ".join(tfs),
-                "timeframe_count": len(tfs),
-                "last_touch": max(x["last_touch"] for x in cl),
-                "current_price": current_price,
-                "current_atr": current_atr,   # kept so the cards can measure edge-distance in ATR
-                "distance_atr": round(abs(center - current_price) / current_atr, 2) if current_atr else np.nan,
-            })
+                _emit(cl, inst)
 
     out = pd.DataFrame(final)
     if out.empty:
         return out
+
+    # --- enrichment (additive columns): recency, confidence composite, distance bucket ---
+    # All position/recency references are PER-INSTRUMENT (current_price/current_atr are per-row;
+    # last_touch is maxed within each instrument) so a multi-instrument frame isn't cross-contaminated.
+    cp = out["current_price"].to_numpy()
+    catr = out["current_atr"].to_numpy()
+    latest = out.groupby("instrument")["last_touch"].transform("max")
+    out["days_since_touch"] = (latest - out["last_touch"]).dt.total_seconds() / 86400.0
+    days = out["days_since_touch"].fillna(1e9).to_numpy()
+    out["recency_weight"] = np.power(0.5, days / 30.0).clip(0.0, 1.0)   # 30-day half-life
+    tf_conf = out["timeframe_count"].clip(upper=4) / 4.0
+    tmax = out["touches"].max() or 1
+    touch_n = np.log1p(out["touches"]) / np.log1p(tmax)
+    srange = (out["score"].max() - out["score"].min()) or 1.0
+    score_n = (out["score"] - out["score"].min()) / srange
+    out["confidence_score"] = (0.35 * score_n + 0.28 * touch_n
+                               + 0.22 * out["recency_weight"] + 0.15 * tf_conf).round(4)
+    zh, zl = out["zone_high"].to_numpy(), out["zone_low"].to_numpy()
+    edge = np.where(zh < cp, cp - zh, np.where(zl > cp, zl - cp, 0.0))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        edge_atr = np.where((catr > 0) & np.isfinite(catr), edge / catr, np.inf)
+    out["bucket"] = np.select([(edge_atr <= 1.5) & (days <= 30), days > 90],
+                              ["active", "historical"], default="nearby")
+    # validation: drop impossible inverted zones (negative prices stay valid for spreads)
+    out = out[(out["zone_high"] - out["zone_low"]) > 0]
+    if out.empty:
+        return out
+
     # Tick-snapping can collapse two very-close clusters onto the same grid price;
     # keep the higher-scored one.
     if tick_size and tick_size > 0:
         out = out.sort_values("score", ascending=False).drop_duplicates(["instrument", "side", "zone_center"], keep="first")
     out = out[(out["score"] >= min_score) & (out["distance_atr"] <= max_distance_atr)]
+    return out.sort_values(["instrument", "score"], ascending=[True, False]).reset_index(drop=True)
+
+
+def attach_volume_at_level(final_zones: pd.DataFrame, tf_data_inst: dict) -> pd.DataFrame:
+    """Add a ``volume_at_level`` column = total bar volume overlapping each zone, summed
+    on the COARSEST used timeframe only (no multi-TF double count). 0.0 when volume is
+    absent/zero — never NaN, so the strict-JSON bridge holds."""
+    if final_zones is None or final_zones.empty:
+        return final_zones
+    out = final_zones.copy()
+    bars = None
+    if tf_data_inst:
+        coarsest = max(tf_data_inst, key=lambda t: tf_to_timedelta(t) or pd.Timedelta(0))
+        df = tf_data_inst.get(coarsest)
+        if df is not None and len(df) and "volume" in df.columns and float(df["volume"].fillna(0).abs().sum()) > 0:
+            bars = df
+    if bars is None:
+        out["volume_at_level"] = 0.0
+        return out
+    lo = bars["low"].to_numpy(); hi = bars["high"].to_numpy()
+    vol = bars["volume"].fillna(0).clip(lower=0).to_numpy()
+
+    def _vol(zl, zh):
+        v = float(vol[(hi >= zl) & (lo <= zh)].sum())
+        return v if np.isfinite(v) else 0.0
+
+    out["volume_at_level"] = [_vol(r.zone_low, r.zone_high) for r in out.itertuples()]
+    return out
+
+
+def _finalize_zones(final_zones: pd.DataFrame, tf_data: dict) -> pd.DataFrame:
+    """Attach volume-at-level, fold it into the confidence composite, and assign the
+    High/Medium/Low confidence label by percentile across the run. Run once at the tail
+    of the pipeline so volume and confidence are computed on the FINAL (filtered) zones."""
+    if final_zones is None or final_zones.empty:
+        return final_zones
+    parts = [attach_volume_at_level(g, tf_data.get(inst, {})) for inst, g in final_zones.groupby("instrument")]
+    out = pd.concat(parts, ignore_index=True)
+    out["volume_at_level"] = out["volume_at_level"].fillna(0.0)
+    if "confidence_score" in out.columns:
+        cs = out["confidence_score"].astype(float)
+        if float(out["volume_at_level"].sum()) > 0:
+            vmax = float(out["volume_at_level"].max()) or 1.0
+            cs = (0.90 * cs + 0.10 * (out["volume_at_level"] / vmax)).round(4)
+        out["confidence_score"] = cs
+        q = out["confidence_score"].rank(pct=True)
+        out["confidence"] = np.select([q >= 0.66, q >= 0.33], ["High", "Medium"], default="Low")
     return out.sort_values(["instrument", "score"], ascending=[True, False]).reset_index(drop=True)
 
 
@@ -423,6 +515,108 @@ def select_effective_timeframes(requested, native):
     return effective, skipped
 
 
+# ---------------------------------------------------------------------------
+# Zero-config parameter inference (used when SRConfig.auto and the key isn't pinned)
+# ---------------------------------------------------------------------------
+def _pooled_prices(df_master) -> np.ndarray:
+    cols = [c for c in ("open", "high", "low", "close") if c in df_master.columns]
+    if not cols:
+        return np.array([])
+    s = pd.concat([df_master[c] for c in cols], ignore_index=True).dropna()
+    return pd.unique(s.to_numpy())
+
+
+def infer_tick_size(df_master) -> float:
+    """Tick = 10**-(decimals used by ~95% of prices). Robust to a few high-precision
+    float-noise values; integer-priced data -> 1.0; <2 distinct prices -> 0.0 (off).
+    Sign-agnostic, so negative-price spreads work."""
+    p = _pooled_prices(df_master)
+    if p.size < 2:
+        return 0.0
+    decs = []
+    for v in p:
+        s = f"{abs(float(v)):.8f}".rstrip("0").rstrip(".")
+        decs.append(len(s.split(".")[1]) if "." in s else 0)
+    d = int(np.percentile(np.array(decs), 95))
+    d = min(max(d, 0), 6)
+    return round(10.0 ** (-d), 6) if d > 0 else 1.0
+
+
+def infer_lookback(df_master) -> int:
+    """Chart bars per timeframe: ~400, capped to data length, floored at 50."""
+    n = len(df_master)
+    return 50 if n <= 0 else max(50, min(n, 400))
+
+
+def infer_zone_width(df_master, tick_size) -> float:
+    """Zone half-width as a fraction of ATR (the atr_multiplier). Keeps the 0.25 default
+    but widens just enough that a zone always spans >= 2 ticks; clipped to [0.10, 0.50]."""
+    if df_master.empty or not {"high", "low"}.issubset(df_master.columns):
+        return 0.25
+    rng = float((df_master["high"] - df_master["low"]).median())
+    mult = 0.25
+    if np.isfinite(rng) and rng > 0 and tick_size and tick_size > 0 and mult * rng < 2 * tick_size:
+        mult = (2 * tick_size) / rng
+    return float(min(max(mult, 0.10), 0.50))
+
+
+def infer_min_score(merged_zones) -> float:
+    """40th-percentile of the (unfiltered) merged scores, clamped to [1.0, 85th pct].
+    <=3 zones -> 0.0 (keep everything; nothing to threshold on)."""
+    if merged_zones is None or merged_zones.empty or "score" not in merged_zones.columns:
+        return 0.0
+    s = merged_zones["score"].dropna()
+    if len(s) <= 3:
+        return 0.0
+    return float(min(max(float(np.percentile(s, 40)), 1.0), float(np.percentile(s, 85))))
+
+
+def infer_max_distance(timeframe_zones) -> float:
+    """Visible/keep window in ATR: (zone-center span / median ATR) * 0.6, clipped [4, 20];
+    fallback 10. Levels beyond this are pruned so the default view stays uncluttered."""
+    if timeframe_zones is None or timeframe_zones.empty:
+        return 10.0
+    catr = timeframe_zones["current_atr"].replace(0, np.nan).median()
+    if not np.isfinite(catr) or catr <= 0:
+        return 10.0
+    span = float(timeframe_zones["zone_center"].max() - timeframe_zones["zone_center"].min())
+    val = (span / float(catr)) * 0.6
+    if not np.isfinite(val):
+        return 10.0
+    return round(float(min(max(val, 4.0), 20.0)), 1)
+
+
+def infer_config(df_master, cfg):
+    """Resolve auto parameters from the data, skipping any key in ``cfg.overrides``.
+    Mutates and returns ``cfg`` plus a ``report`` {key: inferred_value}. Runs ONE
+    permissive probe pass to read the score distribution; the caller then runs the
+    real pipeline with the resolved config."""
+    from dataclasses import replace
+
+    rep, ov = {}, (cfg.overrides or set())
+    if "tick_size" not in ov:
+        cfg.tick_size = infer_tick_size(df_master); rep["tick_size"] = cfg.tick_size
+    if "lookback" not in ov:
+        cfg.lookback = infer_lookback(df_master); rep["lookback"] = cfg.lookback
+    if "atr_multiplier" not in ov:
+        cfg.atr_multiplier = infer_zone_width(df_master, cfg.tick_size); rep["atr_multiplier"] = cfg.atr_multiplier
+
+    if {"min_score", "max_distance_atr"} - ov:   # only probe if something still needs the score distribution
+        probe = replace(cfg, min_score=-1e9, max_distance_atr=1e9, auto=False)
+        _, _, tfz, _, _ = run_sr(df_master, probe.timeframes, probe.swing_windows, probe.timeframe_weights,
+                                 probe.atr_period, probe.atr_multiplier, probe.cluster_atr_multiplier,
+                                 probe.min_score, probe.max_distance_atr, probe.min_zone_width,
+                                 probe.min_bars, probe.tick_size, probe.use_close_for_swings)
+        if tfz is not None and not tfz.empty:
+            if "max_distance_atr" not in ov:
+                cfg.max_distance_atr = infer_max_distance(tfz); rep["max_distance_atr"] = cfg.max_distance_atr
+            if "min_score" not in ov:
+                merged = score_and_merge(tfz, cfg.timeframe_weights, -1e9, 1e9,
+                                         cfg.cluster_atr_multiplier, cfg.tick_size)
+                cfg.min_score = infer_min_score(merged); rep["min_score"] = cfg.min_score
+    return cfg, rep
+
+
 def run_sr(df_master, timeframes, swing_windows, timeframe_weights, atr_period, atr_multiplier,
            cluster_atr_multiplier, min_score, max_distance_atr, min_zone_width, min_bars=30,
            tick_size=0.0, use_close_for_swings=False):
@@ -458,6 +652,7 @@ def run_sr(df_master, timeframes, swing_windows, timeframe_weights, atr_period, 
     raw_levels = pd.concat(all_levels, ignore_index=True) if all_levels else pd.DataFrame()
     timeframe_zones = pd.concat(all_tf_zones, ignore_index=True) if all_tf_zones else pd.DataFrame()
     final_zones = score_and_merge(timeframe_zones, timeframe_weights, min_score, max_distance_atr, cluster_atr_multiplier, tick_size)
+    final_zones = _finalize_zones(final_zones, tf_data)   # volume-at-level + High/Med/Low confidence
     return final_zones, raw_levels, timeframe_zones, tf_data, pd.DataFrame(diagnostics)
 
 

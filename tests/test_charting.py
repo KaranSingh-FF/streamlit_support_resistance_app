@@ -77,12 +77,16 @@ def test_summary_nearest_uses_edges_and_excludes_current_zone():
     cp = s["current_price"]
     below = fz[fz.zone_high < cp]   # fully below the price
     above = fz[fz.zone_low > cp]    # fully above the price
+    # 'actionable' may skip the mathematically-closest edge for a stronger/recent one,
+    # but it must still be a real below/above-price zone with a positive edge distance.
     if s["nearest_support"]:
         assert s["nearest_support"]["high"] < cp + 1e-9
-        assert abs(s["nearest_support"]["high"] - float(below["zone_high"].max())) < 1e-9
+        assert s["nearest_support"]["distance_atr"] > 0
+        assert any(abs(s["nearest_support"]["high"] - h) < 1e-9 for h in below["zone_high"])
     if s["nearest_resistance"]:
         assert s["nearest_resistance"]["low"] > cp - 1e-9
-        assert abs(s["nearest_resistance"]["low"] - float(above["zone_low"].min())) < 1e-9
+        assert s["nearest_resistance"]["distance_atr"] > 0
+        assert any(abs(s["nearest_resistance"]["low"] - lo) < 1e-9 for lo in above["zone_low"])
     if s["current_zone"]:  # if the price is inside a zone, it is flagged, not "nearest"
         assert s["current_zone"]["low"] <= cp <= s["current_zone"]["high"]
 
@@ -111,3 +115,60 @@ def test_zones_to_records_serializable():
     recs = charting.zones_to_records(fz)
     assert isinstance(recs, list) and recs
     assert set(["side", "zone_center", "score", "timeframes"]).issubset(recs[0])
+
+
+# --- zero-config / actionable additions -------------------------------------
+def test_summary_has_plain_english_and_if_then():
+    fz, _ = _result()
+    s = charting.summarize_zones(fz)
+    assert isinstance(s["plain_english"], str) and s["plain_english"]
+    assert isinstance(s["if_then"], list)
+    for r in s["if_then"]:
+        assert set(["trigger", "action", "kind"]).issubset(r) and r["kind"] in {"bull", "bear", "neutral"}
+    # whole summary must be strict-JSON (HTTP bridge contract)
+    json.dumps(s, allow_nan=False)
+
+
+def test_summary_empty_has_all_keys():
+    s = charting.summarize_zones(pd.DataFrame())
+    for k in ("plain_english", "if_then", "top_support_zones", "top_resistance_zones",
+              "nearest_support", "nearest_resistance", "current_zone"):
+        assert k in s
+    assert s["plain_english"] == "" and s["if_then"] == []
+
+
+def test_top_zones_sorted_and_capped():
+    fz, _ = _result()
+    s = charting.summarize_zones(fz)
+    for key, side in (("top_support_zones", "support"), ("top_resistance_zones", "resistance")):
+        recs = s[key]
+        assert len(recs) <= 5
+        assert all(r["side"] == side for r in recs)
+        if len(recs) > 1 and "confidence_score" in recs[0]:
+            cs = [r["confidence_score"] for r in recs]
+            assert cs == sorted(cs, reverse=True)
+
+
+def test_actionable_nearest_skips_low_confidence():
+    # a closer Low-confidence support is skipped for a farther non-Low one
+    cp, ts = 5.0, pd.Timestamp("2026-01-01")
+    fz = pd.DataFrame([
+        dict(side="support", zone_center=4.8, zone_low=4.7, zone_high=4.9, score=2.0,
+             confidence="Low", days_since_touch=5.0, current_price=cp, current_atr=0.2),
+        dict(side="support", zone_center=4.2, zone_low=4.1, zone_high=4.3, score=12.0,
+             confidence="High", days_since_touch=3.0, current_price=cp, current_atr=0.2),
+    ])
+    s = charting.summarize_zones(fz)
+    assert s["nearest_support"]["center"] == 4.2  # the High one, not the closer Low one
+
+
+def test_actionable_falls_back_when_all_low():
+    cp = 5.0
+    fz = pd.DataFrame([
+        dict(side="support", zone_center=4.8, zone_low=4.7, zone_high=4.9, score=1.0,
+             confidence="Low", days_since_touch=5.0, current_price=cp, current_atr=0.2),
+        dict(side="support", zone_center=4.2, zone_low=4.1, zone_high=4.3, score=1.0,
+             confidence="Low", days_since_touch=3.0, current_price=cp, current_atr=0.2),
+    ])
+    s = charting.summarize_zones(fz)
+    assert s["nearest_support"] is not None and s["nearest_support"]["center"] == 4.8  # closest fallback

@@ -12,15 +12,47 @@ The desktop app pins this to a folder beside the executable.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
 _BASE_DIR: Path | None = None
+
+
+def read_json_or_none(path):
+    """Read a JSON file, or None if missing/unreadable/corrupt. Shared by the live monitor + routes."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def write_json_atomic(path, payload) -> None:
+    """Atomically write ``payload`` as JSON: temp file in the same directory, fsync, then
+    ``os.replace`` (atomic on Windows + POSIX). ``allow_nan=False`` enforces the strict-JSON
+    contract — callers pass already JSON-safe data (plain str/int/finite-float/bool/None)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2, allow_nan=False)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def get_base_dir() -> Path:
@@ -61,6 +93,23 @@ def safe_name(instrument: str) -> str:
 
 def master_path_for_instrument(instrument: str) -> Path:
     return master_dir() / f"{safe_name(instrument)}_master.csv"
+
+
+def _write_csv_atomic(df: pd.DataFrame, path: Path) -> None:
+    """Write a master CSV atomically (temp in the same dir + os.replace) so a concurrent
+    reader (the live-feed monitor) never sees a half-written file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        os.close(fd)
+        df.to_csv(tmp, index=False)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def read_excel_any(file_obj_or_path, sheet_name=None) -> pd.DataFrame:
@@ -139,7 +188,7 @@ def merge_into_master(new_df: pd.DataFrame, instrument: str) -> tuple[pd.DataFra
 
     combined = combined.sort_values(["instrument", "datetime"])
     combined = combined.drop_duplicates(["instrument", "datetime"], keep="last").reset_index(drop=True)
-    combined.to_csv(mp, index=False)
+    _write_csv_atomic(combined, mp)   # atomic: the live feed writes while the monitor reads
 
     after_rows = len(combined)
     stats = {

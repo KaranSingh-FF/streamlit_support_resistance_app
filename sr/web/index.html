@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Support / Resistance Terminal</title>
-<!--PLOTLY_JS-->
+<!--CHART_JS-->
 <style>
   :root{
     --bg:#0e1117; --panel:#161b25; --panel2:#1c2230; --border:#262d3a;
@@ -58,17 +58,97 @@
   .atrbar.hidden{display:none}
   .atrbar b{color:var(--text);font-weight:600}
   .atrbar .v{color:var(--accent);font-weight:600}
-  #chart{flex:1 1 auto;min-height:280px;overflow:auto}
-  .table-wrap{flex:0 0 auto;height:32%;min-height:130px;max-height:42%;overflow:auto;border-top:1px solid var(--border);background:var(--panel)}
+  #chart{position:relative;flex:1 1 auto;min-height:280px}
+  /* removed dead .table-wrap / td.side-* — zone tables now use .zones-wrap / .ztable below */
+  /* chart toolbar: timeframe switch + levels-per-side stepper + crosshair readout */
+  .chart-toolbar{display:flex;align-items:center;gap:14px;padding:6px 14px;background:var(--panel);
+    border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap}
+  .chart-toolbar.hidden{display:none}
+  .tfbtns{display:flex;gap:4px}
+  .tfbtn{width:auto;margin:0;padding:3px 11px;font-size:12px;border-radius:5px}
+  .tfbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .levctl{display:flex;align-items:center;gap:6px;color:var(--muted)}
+  .levctl button{width:26px;margin:0;padding:2px 0;font-size:15px;line-height:1}
+  .levctl #levVal{min-width:14px;text-align:center;color:var(--text);font-weight:600}
+  .readout{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .readout b{color:var(--text)}
   table{width:100%;border-collapse:collapse;font-size:12px}
   th,td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--panel2);white-space:nowrap}
-  th{position:sticky;top:0;background:var(--panel2);cursor:pointer;color:var(--muted);font-weight:600;text-align:right}
+  th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-weight:600;text-align:right}
   th:first-child,td:first-child{text-align:left}
-  td.side-support{color:var(--support);font-weight:700;text-align:left}
-  td.side-resistance{color:var(--resistance);font-weight:700;text-align:left}
   tr:hover td{background:var(--panel2)}
   details{padding:10px 16px;border-top:1px solid var(--border);max-height:32%;overflow:auto}
   summary{cursor:pointer;color:var(--muted)}
+  .logbtn{width:auto;margin:0 0 0 8px;padding:2px 10px;font-size:11px}
+  .logbox{margin:8px 0 0;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+    font-family:Consolas,"Courier New",monospace;font-size:11px;color:var(--muted);white-space:pre-wrap;
+    word-break:break-word;max-height:240px;overflow:auto}
+  /* zero-config UI */
+  button.ghost{background:transparent}
+  .auto-line{font-size:11px;color:var(--muted);margin-top:8px}
+  .auto-note{color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
+  .apill{float:right;font-size:9px;padding:1px 6px;border-radius:8px;margin-left:6px;border:1px solid var(--border)}
+  .apill.auto{color:var(--accent);border-color:var(--accent)}
+  .apill.set{color:var(--warn);border-color:var(--warn)}
+  .pe{padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--border);font-size:13px;line-height:1.55}
+  .pe.hidden{display:none}
+  .ifthen{padding:8px 14px 10px;background:var(--panel);border-bottom:1px solid var(--border);max-height:none}
+  .ifthen.hidden{display:none}
+  .ifthen summary{color:var(--muted);font-size:12px}
+  .ifthen ul{margin:8px 0 0;padding-left:18px}
+  .ifthen li{margin:3px 0;font-size:12.5px}
+  .ifthen li.bull{color:var(--support)} .ifthen li.bear{color:var(--resistance)} .ifthen li.neutral{color:var(--warn)}
+  .histtoggle{display:flex;align-items:center;gap:5px;color:var(--muted);cursor:pointer}
+  .histtoggle input{width:auto;margin:0}
+  .zones-wrap{flex:0 0 auto;max-height:42%;overflow:auto;border-top:1px solid var(--border);background:var(--panel)}
+  .zones-wrap details{padding:0;border-top:1px solid var(--border);max-height:none}
+  .zones-wrap summary{padding:7px 14px;font-weight:600;color:var(--text)}
+  .zones-wrap .count{color:var(--muted);font-weight:400;margin-left:6px}
+  .ztable{width:100%;border-collapse:collapse;font-size:12px}
+  .ztable th,.ztable td{padding:5px 10px;text-align:right;border-bottom:1px solid var(--panel2);white-space:nowrap}
+  .ztable th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-weight:600}
+  .ztable th:first-child,.ztable td:first-child{text-align:left}
+  .ztable td.s-support{color:var(--support);font-weight:700;text-align:left}
+  .ztable td.s-resistance{color:var(--resistance);font-weight:700;text-align:left}
+  .ztable td.dim{color:#5a6577}
+  .badge{font-size:10px;padding:1px 7px;border-radius:8px;border:1px solid var(--border)}
+  .badge.high{color:var(--support);border-color:var(--support)}
+  .badge.med{color:var(--warn);border-color:var(--warn)}
+  .badge.low{color:var(--muted)}
+  /* live feed + alerts */
+  .feedbar{display:flex;align-items:center;gap:12px;padding:6px 14px;background:var(--panel);
+    border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap}
+  .feedbar.hidden{display:none}
+  .pill{padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid var(--border)}
+  .pill.ok{color:var(--support);border-color:var(--support)}
+  .pill.warn{color:var(--warn);border-color:var(--warn)}
+  .pill.err{color:var(--resistance);border-color:var(--resistance)}
+  .pill.off{color:var(--muted);border-color:var(--border)}
+  .feedbar .dev{color:var(--warn)} .feedbar a{color:var(--accent)}
+  .alert-row{padding:4px 2px;border-bottom:1px solid var(--panel2);font-size:12px;font-variant-numeric:tabular-nums}
+  .alert-row .s-support{color:var(--support);font-weight:700}
+  .alert-row .s-resistance{color:var(--resistance);font-weight:700}
+  /* tabs */
+  .tabbar{display:flex;gap:2px;padding:0 14px;background:var(--panel);border-bottom:1px solid var(--border)}
+  .tab{width:auto;margin:0;border:none;border-bottom:2px solid transparent;border-radius:0;background:transparent;
+    padding:9px 16px;color:var(--muted);font-size:13px}
+  .tab:hover{color:var(--text);border-color:transparent}
+  .tab.active{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+  .tabpanel{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;overflow:auto}
+  .tabpanel.hidden{display:none}
+  .panel-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)}
+  .ov-wrap{overflow:auto}
+  .ov-wrap .ztable td.near{font-variant-numeric:tabular-nums}
+  /* config form */
+  .cfg-form{padding:16px 18px;max-width:640px}
+  .cfg-form h3{margin:18px 0 6px;font-size:13px;color:var(--accent);border-bottom:1px solid var(--border);padding-bottom:4px}
+  .cfg-form h3:first-child{margin-top:0}
+  .cfg-form label{display:block;margin-top:8px;font-size:12px;color:var(--muted)}
+  .cfg-form .chkrow{display:flex;align-items:center;gap:8px}
+  .cfg-form .chkrow input{width:auto;margin:0}
+  .cfg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .cfg-form button.primary{margin-top:16px;max-width:200px}
   .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--muted);border-top-color:var(--accent);
     border-radius:50%;animation:s .7s linear infinite;vertical-align:middle;margin-right:6px}
   @keyframes s{to{transform:rotate(360deg)}}
@@ -113,7 +193,17 @@
     </div>
 
     <div class="grp">
-      <div class="lbl">3 · Settings</div>
+      <div class="lbl">3 · Run</div>
+      <button id="btnRun" class="primary">▶ Run S/R Engine</button>
+      <div class="auto-line">Parameters are auto-detected from your data.</div>
+      <button id="btnReset" title="Clear manual overrides and let the app infer everything">↺ Reset to Auto</button>
+      <button id="btnAdv" class="ghost">⚙ Advanced settings</button>
+      <button id="btnCopy">⧉ Copy zones (TSV)</button>
+    </div>
+
+    <div class="grp adv hidden" id="advPanel">
+      <div class="lbl">Advanced <span class="auto-note">— each value is auto unless you change it</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Timeframes</div>
       <div class="chk" id="tfBox">
         <label><input type="checkbox" value="15min" checked>15m</label>
         <label><input type="checkbox" value="1h" checked>1h</label>
@@ -121,39 +211,86 @@
         <label><input type="checkbox" value="1D" checked>1D</label>
         <label><input type="checkbox" value="1W">1W</label>
       </div>
-      <div class="sld">Min score <span class="v" id="vScore">3.0</span>
+      <div class="sld">Min score <span class="apill auto" data-k="min_score">auto</span><span class="v" id="vScore">3.0</span>
         <input type="range" id="minScore" min="0" max="20" step="0.5" value="3"></div>
-      <div class="sld">Max distance (ATR) <span class="v" id="vDist">10</span>
-        <input type="range" id="maxDist" min="1" max="30" step="1" value="10"></div>
-      <div class="sld">Zone width × ATR <span class="v" id="vWidth">0.25</span>
+      <div class="sld">Max distance (ATR) <span class="apill auto" data-k="max_distance_atr">auto</span><span class="v" id="vDist">10</span>
+        <input type="range" id="maxDist" min="1" max="60" step="1" value="10"></div>
+      <div class="sld">Zone width × ATR <span class="apill auto" data-k="atr_multiplier">auto</span><span class="v" id="vWidth">0.25</span>
         <input type="range" id="atrMult" min="0.05" max="1" step="0.05" value="0.25"></div>
-      <div class="sld">Chart bars <span class="v" id="vLb">300</span>
+      <div class="sld">Chart bars <span class="apill auto" data-k="lookback">auto</span><span class="v" id="vLb">300</span>
         <input type="range" id="lookback" min="50" max="1500" step="50" value="300"></div>
-      <div style="margin-top:12px">Tick size (snap levels to grid)
+      <div style="margin-top:12px">Tick size <span class="apill auto" data-k="tick_size">auto</span>
         <input type="number" id="tickSize" value="0.01" step="0.001" min="0"></div>
       <label style="display:flex;align-items:center;gap:6px;margin-top:12px;font-size:12px;cursor:pointer">
         <input type="checkbox" id="useClose" style="width:auto;margin:0">
         Use closes for swings (ignore wicks)</label>
     </div>
-
-    <div class="grp">
-      <button id="btnRun" class="primary">▶ Run S/R Engine</button>
-      <button id="btnCopy">⧉ Copy zones (TSV)</button>
-    </div>
   </aside>
 
   <section class="main">
     <div class="status" id="status"><span>Ready.</span><span id="statusRight"></span></div>
-    <div class="cards hidden" id="cards"></div>
-    <div class="atrbar hidden" id="atrbar"></div>
-    <div id="chart"><div class="empty">Select an instrument and click <b>Run S/R Engine</b>.</div></div>
-    <div class="table-wrap">
-      <table id="zonesTable"><thead></thead><tbody></tbody></table>
+    <div class="feedbar hidden" id="feedBar"></div>
+    <div class="tabbar">
+      <button class="tab active" data-tab="chart">Chart</button>
+      <button class="tab" data-tab="instruments">Instruments</button>
+      <button class="tab" data-tab="config">Config</button>
     </div>
+    <div class="tabpanel" id="tab-chart">
+    <div class="cards hidden" id="cards"></div>
+    <div class="pe hidden" id="summaryBlock"></div>
+    <details class="ifthen hidden" id="ifthenBlock" open></details>
+    <div class="atrbar hidden" id="atrbar"></div>
+    <div class="chart-toolbar hidden" id="chartTools">
+      <div class="tfbtns" id="tfBtns"></div>
+      <div class="levctl">Levels/side
+        <button id="levMinus" title="Show fewer levels">−</button>
+        <span id="levVal">1</span>
+        <button id="levPlus" title="Show more levels">+</button>
+      </div>
+      <label class="histtoggle"><input type="checkbox" id="chartHistorical"> Show historical / far</label>
+      <div class="readout" id="readout">Hover for OHLC · click near a line to copy its price</div>
+    </div>
+    <div id="chart"><div class="empty">Select an instrument and click <b>Run S/R Engine</b>.</div></div>
+    <div class="zones-wrap" id="zonesWrap"></div>
     <details id="diagWrap" style="display:none">
       <summary>Timeframe diagnostics</summary>
       <table id="diagTable"><thead></thead><tbody></tbody></table>
     </details>
+    <details id="alertsWrap" open>
+      <summary>Recent alerts <span class="count" id="alertCount"></span></summary>
+      <div id="alertsBox" class="logbox">No alerts yet.</div>
+    </details>
+    <details id="logWrap">
+      <summary>Detailed logs <button id="btnLogs" class="logbtn">Refresh</button></summary>
+      <pre id="logBox" class="logbox">Open this section to load logs.</pre>
+    </details>
+    </div><!-- /tab-chart -->
+
+    <div class="tabpanel hidden" id="tab-instruments">
+      <div class="panel-head"><b>Instruments &amp; data coverage</b>
+        <button id="btnRefreshOverview" class="logbtn">Refresh</button>
+        <span class="muted" id="ovStatus"></span></div>
+      <div class="ov-wrap"><table class="ztable" id="ovTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="tabpanel hidden" id="tab-config">
+      <div class="cfg-form">
+        <h3>Teams alerts</h3>
+        <label>Webhook URL <span class="muted" id="cfgWebhookStatus"></span></label>
+        <input id="cfgWebhook" type="password" placeholder="https://…webhook.office.com/…  (leave blank to keep current)" autocomplete="off" />
+        <h3>Mode</h3>
+        <label class="chkrow"><input type="checkbox" id="cfgAnalysisOnly"> Analysis-only — no live feed or alerts
+          <span class="muted">(applies on next launch)</span></label>
+        <h3>Monitor</h3>
+        <div class="cfg-grid">
+          <label>Poll seconds<input type="number" id="cfgPoll" min="1" max="30" step="1"></label>
+          <label>Max quote age (s)<input type="number" id="cfgMaxAge" min="5" max="600" step="1"></label>
+          <label>Zone recompute (s)<input type="number" id="cfgRecompute" min="30" max="3600" step="10"></label>
+        </div>
+        <button id="btnSaveConfig" class="primary">Save config</button>
+        <div class="file" id="cfgSaveStatus"></div>
+      </div>
+    </div>
   </section>
 </div>
 
@@ -177,8 +314,14 @@
 <script>
 let pickedFile = null;
 let pendingToken = null;
-let lastZones = [], zoneSort = {key:'score', dir:-1};
+let lastZones = [];
 let tickDecimals = 2;
+let overrides = {}, lastApplied = null;   // manual advanced overrides + last applied_settings
+const ADV = {minScore:'min_score', maxDist:'max_distance_atr', atrMult:'atr_multiplier',
+             lookback:'lookback', tickSize:'tick_size'};   // control id -> settings key
+// chart state (TradingView Lightweight Charts; rebuilt client-side on TF / level changes)
+let chart = null, candleSeries = null, levelLines = [];
+let lastChartData = null, currentTF = null, levelsPerSide = 1, shownLevels = [];
 
 async function jget(path){ const r = await fetch('/api/'+path); return r.json(); }
 async function jpost(path, body){
@@ -199,31 +342,50 @@ function busy(msg){setStatus('<span class="spin"></span>'+msg);}
 
 function gatherSettings(){
   const tfs = [...document.querySelectorAll('#tfBox input:checked')].map(c=>c.value);
-  return {
-    timeframes: tfs,
-    min_score: parseFloat($('minScore').value),
-    max_distance_atr: parseFloat($('maxDist').value),
-    atr_multiplier: parseFloat($('atrMult').value),
-    lookback: parseInt($('lookback').value),
-    tick_size: parseFloat($('tickSize').value) || 0,
-    use_close_for_swings: $('useClose').checked,
-  };
+  const s = { auto: true, timeframes: tfs, use_close_for_swings: $('useClose').checked };
+  for(const key of Object.values(ADV)) if(overrides[key] !== undefined) s[key] = overrides[key];  // only pinned keys
+  return s;
 }
 
 function fmtPrice(v){ return typeof v==='number' ? v.toFixed(tickDecimals) : (v==null?'—':v); }
 
-function sortedZones(){
-  return [...lastZones].sort((a,b)=>{
-    const x=a[zoneSort.key], y=b[zoneSort.key];
-    return (typeof x==='number'? x-y : String(x).localeCompare(String(y))) * zoneSort.dir;
-  });
+function setPill(key, state){
+  const p = document.querySelector(`.apill[data-k="${key}"]`);
+  if(p){ p.textContent = state; p.className = 'apill ' + state; }
+}
+function markOverride(id){
+  const key = ADV[id]; if(!key) return;
+  overrides[key] = (id === 'lookback') ? parseInt($(id).value) : parseFloat($(id).value);
+  setPill(key, 'set');
+}
+function applyApplied(ap){
+  if(ap) lastApplied = ap;
+  if(!ap) return;
+  const map = {min_score:['minScore','vScore'], max_distance_atr:['maxDist','vDist'],
+               atr_multiplier:['atrMult','vWidth'], lookback:['lookback','vLb'], tick_size:['tickSize',null]};
+  const inferred = new Set(ap.inferred || []);
+  for(const [key,[id,vid]] of Object.entries(map)){
+    if(overrides[key] !== undefined){ setPill(key,'set'); continue; }  // user pinned -> keep their value
+    const val = ap[key];
+    if(val == null) continue;
+    $(id).value = val;
+    if(vid) $(vid).textContent = $(id).value;  // read back the step-snapped value the slider holds
+    setPill(key, inferred.has(key) ? 'auto' : 'set');
+  }
+}
+function resetToAuto(){
+  overrides = {};
+  document.querySelectorAll('.apill').forEach(p=>{ p.textContent='auto'; p.className='apill auto'; });
+  if(lastApplied) applyApplied(lastApplied);
+  setStatus('Reset to auto — every parameter will be inferred on the next run.');
 }
 
-// live slider labels
-const sliders = {minScore:'vScore', maxDist:'vDist', atrMult:'vWidth', lookback:'vLb'};
-for(const [s,v] of Object.entries(sliders)){
-  $(s).addEventListener('input', ()=> $(v).textContent = $(s).value);
+// live slider labels + record manual overrides (flips the pill to 'set')
+const advLabels = {minScore:'vScore', maxDist:'vDist', atrMult:'vWidth', lookback:'vLb'};
+for(const [id,v] of Object.entries(advLabels)){
+  $(id).addEventListener('input', ()=>{ $(v).textContent = $(id).value; markOverride(id); });
 }
+$('tickSize').addEventListener('input', ()=> markOverride('tickSize'));
 
 async function refreshInstruments(selected){
   const list = await jget('instruments');
@@ -303,25 +465,199 @@ async function deleteMaster(){
   setStatus('Deleted '+inst+'.');
 }
 
-function renderZones(){
+function recencyTxt(d){
+  if(d==null) return '—';
+  if(d < 1) return 'today';
+  if(d < 14) return Math.round(d)+'d';
+  if(d < 60) return Math.round(d/7)+'w';
+  return Math.round(d/30)+'mo';
+}
+function zoneCell(z, key){
+  if(key==='side') return `<td class="s-${z.side}">${z.side}</td>`;
+  if(key==='confidence'){
+    const c=(z.confidence||'').toLowerCase(), cls=c==='high'?'high':c==='medium'?'med':'low';
+    return `<td><span class="badge ${cls}">${z.confidence||'—'}</span></td>`;
+  }
+  if(key==='volume_at_level'){ const v=z.volume_at_level||0; return v>0?`<td>${Math.round(v).toLocaleString()}</td>`:'<td class="dim">—</td>'; }
+  if(key==='days_since_touch') return `<td>${recencyTxt(z.days_since_touch)}</td>`;
+  if(key==='zone_center'||key==='zone_low'||key==='zone_high') return `<td>${fmtPrice(z[key])}</td>`;
+  if(key==='score') return `<td><b>${z.score}</b></td>`;
+  return `<td>${z[key]!=null?z[key]:'—'}</td>`;
+}
+function renderZoneGroups(){
+  const wrap = $('zonesWrap');
+  if(!lastZones.length){ wrap.innerHTML='<div class="empty">No zones — run the engine.</div>'; return; }
   const cols = [['side','Side'],['zone_center','Center'],['zone_low','Low'],['zone_high','High'],
-                ['score','Score'],['touches','Touch'],['timeframes','TFs'],['distance_atr','Dist(ATR)']];
-  const thead = $('zonesTable').tHead, tbody = $('zonesTable').tBodies[0];
-  thead.innerHTML = '<tr>'+cols.map(c=>{
-    const arrow = zoneSort.key===c[0] ? (zoneSort.dir<0?' ▼':' ▲') : '';
-    return `<th data-k="${c[0]}" title="Click to sort">${c[1]}${arrow}</th>`;
-  }).join('')+'</tr>';
-  thead.querySelectorAll('th').forEach(th=>th.onclick=()=>{
-    const k=th.dataset.k; zoneSort = {key:k, dir: zoneSort.key===k? -zoneSort.dir : -1}; renderZones();
-  });
-  tbody.innerHTML = sortedZones().map(z=>`<tr>
-    <td class="side-${z.side}">${z.side}</td>
-    <td>${fmtPrice(z.zone_center)}</td><td>${fmtPrice(z.zone_low)}</td><td>${fmtPrice(z.zone_high)}</td>
-    <td><b>${z.score}</b></td><td>${z.touches}</td><td>${z.timeframes}</td><td>${z.distance_atr}</td>
-  </tr>`).join('');
+                ['confidence','Conf'],['touches','Touch'],['volume_at_level','Vol'],
+                ['days_since_touch','Recency'],['score','Score'],['distance_atr','Dist(ATR)'],['timeframes','TFs']];
+  const head = '<tr>'+cols.map(c=>`<th>${c[1]}</th>`).join('')+'</tr>';
+  const showHist = $('chartHistorical').checked;
+  const groups = [['active','Active'],['nearby','Nearby'],['historical','Historical']];
+  wrap.innerHTML = groups.map(([b,label])=>{
+    const rows = lastZones.filter(z=>(z.bucket||'nearby')===b);
+    if(!rows.length) return '';
+    const open = (b==='historical') ? (showHist?'open':'') : 'open';
+    const body = rows.map(z=>'<tr>'+cols.map(c=>zoneCell(z,c[0])).join('')+'</tr>').join('');
+    return `<details ${open}><summary>${label} <span class="count">${rows.length}</span></summary>
+      <table class="ztable"><thead>${head}</thead><tbody>${body}</tbody></table></details>`;
+  }).join('') || '<div class="empty">No zones.</div>';
 }
 
 function fmtNum(v){return typeof v==='number' ? (Math.abs(v)<100? v.toFixed(4): v.toFixed(2)) : '—';}
+
+// ---- chart (TradingView Lightweight Charts) -------------------------------
+const LWC = () => window.LightweightCharts;
+
+function ensureChart(){
+  if(chart) return;
+  const el = $('chart'); el.innerHTML = '';
+  chart = LWC().createChart(el, {
+    autoSize: true,
+    layout:{ background:{color:'#0e1117'}, textColor:'#c7cdda', fontFamily:'Segoe UI, system-ui, sans-serif' },
+    grid:{ vertLines:{color:'#1c2230'}, horzLines:{color:'#1c2230'} },
+    rightPriceScale:{ borderColor:'#262d3a' },
+    timeScale:{ borderColor:'#262d3a', timeVisible:true, secondsVisible:false },
+    crosshair:{ mode: LWC().CrosshairMode.Normal },
+  });
+  candleSeries = chart.addCandlestickSeries({
+    upColor:'#26a69a', downColor:'#ef5350', borderVisible:false,
+    wickUpColor:'#26a69a', wickDownColor:'#ef5350',
+    // Lightweight Charts autoscales to the CANDLES only — price lines are ignored,
+    // so an S/R level above/below the visible candles would be drawn off-screen.
+    // Extend the autoscale range to include the drawn levels + current price.
+    autoscaleInfoProvider: (orig)=>{
+      const res = orig();
+      const extra = shownLevels.map(z=>z.zone_center);
+      if(lastChartData && lastChartData.current_price!=null) extra.push(lastChartData.current_price);
+      if(!extra.length) return res;
+      let lo = Math.min(...extra), hi = Math.max(...extra);
+      if(res && res.priceRange){ lo = Math.min(lo, res.priceRange.minValue); hi = Math.max(hi, res.priceRange.maxValue); }
+      return { priceRange: { minValue: lo, maxValue: hi }, margins: res && res.margins };
+    },
+  });
+  chart.subscribeCrosshairMove(onCrosshair);
+  chart.subscribeClick(onChartClick);
+}
+
+// chart levels: ACTIVE bucket + non-Low confidence by default; the "Show historical/far"
+// toggle widens the pool. Then take the nearest N per side (the Levels/side stepper).
+function nearestLevels(zones, price, n){
+  const showHist = $('chartHistorical') && $('chartHistorical').checked;
+  let pool = zones.filter(z => z.confidence !== 'Low');
+  if(!pool.length) pool = zones.slice();
+  let view = showHist ? pool : pool.filter(z => (z.bucket || 'nearby') === 'active');
+  if(!view.length) view = pool.filter(z => (z.bucket || 'nearby') !== 'historical');  // fallback so it's not empty
+  if(!view.length) view = pool;
+  const sup = view.filter(z=>z.side==='support' && z.zone_high < price)
+                  .sort((a,b)=> b.zone_high - a.zone_high).slice(0, n);
+  const res = view.filter(z=>z.side==='resistance' && z.zone_low > price)
+                  .sort((a,b)=> a.zone_low - b.zone_low).slice(0, n);
+  return sup.concat(res);
+}
+
+function drawLevels(){
+  if(!candleSeries || !lastChartData) return;
+  levelLines.forEach(l=>candleSeries.removePriceLine(l)); levelLines = [];
+  const price = lastChartData.current_price, atr = lastChartData.current_atr;
+  if(price==null) return;
+  shownLevels = nearestLevels(lastZones, price, levelsPerSide);
+  shownLevels.forEach(z=>{
+    const c = z.side==='support' ? '#26a69a' : '#ef5350';
+    // distance to the near EDGE, matching the 'Nearest support/resistance' cards
+    const gap = z.side==='support' ? (price - z.zone_high) : (z.zone_low - price);
+    const atrTxt = atr ? ` · ${(gap/atr).toFixed(2)} ATR` : '';
+    levelLines.push(candleSeries.createPriceLine({
+      price: z.zone_center, color: c, lineWidth: 2, lineStyle: LWC().LineStyle.Solid,
+      axisLabelVisible: true,
+      title: `${z.side==='support'?'S':'R'} ${fmtPrice(z.zone_center)}${atrTxt} · ${(gap/price*100).toFixed(1)}%`,
+    }));
+  });
+  levelLines.push(candleSeries.createPriceLine({
+    price, color:'#f5d142', lineWidth:1, lineStyle: LWC().LineStyle.Dotted,
+    axisLabelVisible:true, title:`last ${fmtPrice(price)}`,
+  }));
+  // force the price axis to recompute now that shownLevels changed, so the
+  // autoscaleInfoProvider re-runs and the new levels can't sit off-screen
+  const ps = candleSeries.priceScale();
+  ps.applyOptions({ autoScale:false }); ps.applyOptions({ autoScale:true });
+}
+
+function applyTf(){
+  if(!candleSeries || !lastChartData) return;
+  candleSeries.setData(lastChartData.candles[currentTF] || []);
+  chart.timeScale().fitContent();
+}
+
+function buildTfButtons(){
+  const box = $('tfBtns'); box.innerHTML = '';
+  (lastChartData.timeframes || []).forEach(tf=>{
+    const b = document.createElement('button');
+    b.className = 'tfbtn' + (tf===currentTF ? ' active' : '');
+    b.textContent = tf;
+    b.onclick = ()=>{ currentTF = tf; applyTf(); buildTfButtons(); };
+    box.appendChild(b);
+  });
+}
+
+function renderChart(){
+  const cd = lastChartData, tools = $('chartTools');
+  if(!cd || !cd.timeframes || !cd.timeframes.length){
+    tools.classList.add('hidden');
+    if(chart){ chart.remove(); chart=null; candleSeries=null; levelLines=[]; shownLevels=[]; }
+    $('chart').innerHTML = '<div class="empty">No chartable data for this instrument.</div>';
+    return;
+  }
+  tools.classList.remove('hidden');
+  if(!currentTF || !cd.timeframes.includes(currentTF))
+    currentTF = cd.timeframes.includes(cd.default_tf) ? cd.default_tf : cd.timeframes[cd.timeframes.length-1];
+  ensureChart();
+  applyTf();
+  drawLevels();
+  buildTfButtons();
+  $('levVal').textContent = levelsPerSide;
+}
+
+function onCrosshair(param){
+  const ro = $('readout');
+  if(!param || !param.time || !param.point){
+    ro.innerHTML = 'Hover for OHLC · click near a line to copy its price'; return;
+  }
+  const bar = param.seriesData.get(candleSeries);
+  const price = candleSeries.coordinateToPrice(param.point.y);
+  const ds = new Date(param.time*1000).toISOString().slice(0,16).replace('T',' ');
+  let s = `<b>${ds}</b>`;
+  if(bar) s += `  O ${fmtPrice(bar.open)}  H ${fmtPrice(bar.high)}  L ${fmtPrice(bar.low)}  C ${fmtPrice(bar.close)}`;
+  if(price!=null) s += `  ·  cursor ${fmtPrice(price)}`;
+  ro.innerHTML = s;
+}
+
+function onChartClick(param){
+  if(!param || !param.point || !candleSeries || !shownLevels.length) return;
+  const price = candleSeries.coordinateToPrice(param.point.y);
+  if(price==null) return;
+  let best=null, bd=Infinity;
+  shownLevels.forEach(z=>{ const d=Math.abs(z.zone_center-price); if(d<bd){bd=d;best=z;} });
+  if(best) copyLevel(best);
+}
+
+function copyLevel(z){
+  const txt = String(z.zone_center);
+  const done = ()=> setStatus(`Copied ${z.side} level <b>${fmtPrice(z.zone_center)}</b> to clipboard.`, 'ok');
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt,done));
+  else fallbackCopy(txt,done);
+}
+
+// ---- detailed logs panel --------------------------------------------------
+async function refreshLogs(){
+  const box = $('logBox');
+  try {
+    const r = await jget('logs');
+    const lines = r.lines || [];
+    box.textContent = lines.length ? lines.join('\n') : 'No log entries yet.';
+    box.scrollTop = box.scrollHeight;  // newest at the bottom
+  } catch(e){ box.textContent = 'Could not load logs: '+e; }
+}
 
 function renderSummary(s){
   const cards = $('cards');
@@ -333,8 +669,23 @@ function renderSummary(s){
   cards.innerHTML =
     card('price','Current price', fmtPrice(s.current_price), `${s.n_support} support · ${s.n_resistance} resistance`) +
     (cur ? card('current','Inside zone', `${fmtPrice(cur.low)}–${fmtPrice(cur.high)}`, `price is inside this ${cur.side} zone · score ${cur.score}`) : '') +
-    card('support','Nearest support', sup? fmtPrice(sup.center):'—', sup? `${atr(sup.distance_atr)} ATR away · score ${sup.score}`:'none') +
-    card('resistance','Nearest resistance', res? fmtPrice(res.center):'—', res? `${atr(res.distance_atr)} ATR away · score ${res.score}`:'none');
+    card('support','Nearest support', sup? fmtPrice(sup.center):'—', sup? `${atr(sup.distance_atr)} ATR · ${sup.confidence||'—'} confidence`:'none in range') +
+    card('resistance','Nearest resistance', res? fmtPrice(res.center):'—', res? `${atr(res.distance_atr)} ATR · ${res.confidence||'—'} confidence`:'none in range');
+}
+
+function renderPlainEnglish(s){
+  const el = $('summaryBlock');
+  if(!s || !s.plain_english){ el.className='pe hidden'; el.textContent=''; return; }
+  el.className='pe'; el.textContent = s.plain_english;
+}
+
+function renderIfThen(s){
+  const el = $('ifthenBlock');
+  const rows = (s && s.if_then) || [];
+  if(!rows.length){ el.className='ifthen hidden'; el.innerHTML=''; return; }
+  el.className='ifthen';
+  el.innerHTML = '<summary>If / then map</summary><ul>' +
+    rows.map(r=>`<li class="${r.kind}"><b>If</b> ${r.trigger}, <b>then</b> ${r.action}.</li>`).join('') + '</ul>';
 }
 
 function renderAtr(atrByTf){
@@ -350,9 +701,10 @@ function renderAtr(atrByTf){
 
 function copyZones(){
   if(!lastZones.length){ setStatus('No zones to copy — run the engine first.','err'); return; }
-  const cols=['side','zone_center','zone_low','zone_high','score','touches','timeframes','distance_atr'];
-  const head=['Side','Center','Low','High','Score','Touches','Timeframes','Dist(ATR)'].join('\t');
-  const body=sortedZones().map(z=>cols.map(c=>z[c]).join('\t')).join('\n');
+  const cols=['side','zone_center','zone_low','zone_high','confidence','touches','volume_at_level',
+              'days_since_touch','score','distance_atr','bucket','timeframes'];
+  const head=['Side','Center','Low','High','Confidence','Touches','Volume','DaysSince','Score','Dist(ATR)','Bucket','Timeframes'].join('\t');
+  const body=lastZones.map(z=>cols.map(c=>z[c]).join('\t')).join('\n');
   copyText(head+'\n'+body, lastZones.length);
 }
 function copyText(text, n){
@@ -395,19 +747,23 @@ async function runSR(){
   busy('Calculating support/resistance for '+inst+'…');
   const res = await jpost('run', {instrument: inst, settings: gatherSettings()});
   if(!res.ok){setStatus('Run failed: '+res.error, 'err');return;}
-  const fig = JSON.parse(res.figure);
-  Plotly.react('chart', fig.data, fig.layout, {responsive:true, displaylogo:false, scrollZoom:true,
-    modeBarButtonsToRemove:['select2d','lasso2d']});
   lastZones = res.zones || [];
-  tickDecimals = res.tick_size>0 ? Math.min(8, Math.max(0, Math.round(-Math.log10(res.tick_size)))) : 4;
+  lastChartData = res.chart_data || null;
+  tickDecimals = (res.price_decimals != null) ? res.price_decimals
+               : (res.tick_size>0 ? Math.min(8, Math.max(0, Math.round(-Math.log10(res.tick_size)))) : 4);
+  applyApplied(res.applied_settings);
   renderSummary(res.summary);
+  renderPlainEnglish(res.summary);
+  renderIfThen(res.summary);
   renderAtr(res.atr_by_tf);
-  renderZones();
+  renderChart();
+  renderZoneGroups();
   renderDiagnostics(res.diagnostics);
   markSkippedTimeframes(res.diagnostics);
   const n = lastZones.length, skipped = (res.diagnostics||[]).filter(d=>d.status==='skipped').length;
   setStatus(`Done — <b>${n}</b> zones for ${inst}.`, 'ok');
   $('statusRight').textContent = skipped? `${skipped} timeframe(s) skipped (see diagnostics)`:'';
+  if($('logWrap').open) refreshLogs();
 }
 
 function init(){
@@ -417,23 +773,145 @@ function init(){
   $('btnDelete').onclick = deleteMaster;
   $('btnRun').onclick = runSR;
   $('btnCopy').onclick = copyZones;
+  $('btnReset').onclick = resetToAuto;
+  $('btnAdv').onclick = ()=> $('advPanel').classList.toggle('hidden');
+  $('chartHistorical').onchange = ()=>{ drawLevels(); renderZoneGroups(); };
   $('invKeepAll').onclick = ()=> document.querySelectorAll('.inv-keep').forEach(c=>c.checked=true);
   $('invRemoveAll').onclick = ()=> document.querySelectorAll('.inv-keep').forEach(c=>c.checked=false);
   $('invApply').onclick = applyInvalid;
   $('invCancel').onclick = closeInvalidDialog;
 
-  // Keep the chart sized to its container at any window/display size (crisp, no crop).
-  const chartEl = $('chart');
-  if(window.ResizeObserver){
-    new ResizeObserver(()=>{ if(chartEl.querySelector('.plotly')){ try{ Plotly.Plots.resize(chartEl); }catch(e){} } })
-      .observe(chartEl);
-  }
+  // levels-per-side stepper — re-filters the chart client-side, no engine re-run
+  $('levMinus').onclick = ()=>{ levelsPerSide = Math.max(1, levelsPerSide-1); $('levVal').textContent = levelsPerSide; drawLevels(); };
+  $('levPlus').onclick  = ()=>{ levelsPerSide = Math.min(10, levelsPerSide+1); $('levVal').textContent = levelsPerSide; drawLevels(); };
+  // (chart resize is handled by Lightweight Charts' autoSize)
+
+  // detailed logs panel: load on expand + manual refresh
+  $('btnLogs').onclick = (e)=>{ e.preventDefault(); refreshLogs(); };
+  $('logWrap').addEventListener('toggle', ()=>{ if($('logWrap').open) refreshLogs(); });
+
+  // tabs (Chart / Instruments / Config)
+  document.querySelectorAll('.tab').forEach(t=> t.onclick = ()=> switchTab(t.dataset.tab));
+  $('btnRefreshOverview').onclick = loadOverview;
+  $('btnSaveConfig').onclick = saveConfig;
+  // live feed status pill polls every 2s (the feed bar sits above the tabs)
+  pollFeed();
+  feedTimer = setInterval(pollFeed, 2000);
 
   refreshInstruments().then(list=>{
     if(list.length) setStatus(`${list.length} instrument(s) loaded. Pick one and Run.`);
     else setStatus('No data yet — select an Excel file to begin.');
   });
 }
+// ---- live feed + Teams alerts ---------------------------------------------
+let feedTimer = null;
+function fmtA(v){ return v==null ? '—' : Number(v).toFixed(2); }
+async function pollFeed(){
+  try {
+    renderFeedBar(await jget('feed/status'));
+    const a = await jget('alerts/recent?n=40');
+    renderAlerts(a.alerts || []);
+  } catch(e){ /* transient; next tick */ }
+}
+function renderFeedBar(s){
+  const bar = $('feedBar'); bar.classList.remove('hidden');
+  let cls='err', label = s.status || 'DISCONNECTED';
+  if(s.disabled){ cls='off'; label='feed off (analysis-only)'; }
+  else if(s.status==='CONNECTED' && !s.stale){ cls='ok'; label='● LIVE'; }
+  else if(s.status==='CONNECTED' && s.stale){ cls='warn'; label='STALE'; }
+  let html = `<span class="pill ${cls}">${label}</span>`;
+  if(s.reason && cls!=='ok' && cls!=='off') html += `<span style="opacity:.7">${s.reason}</span>`;
+  if(Array.isArray(s.monitoring)) html += `<span style="opacity:.7">monitoring ${s.monitoring.length}</span>`;
+  html += `<span style="opacity:.7">webhook: ${s.webhook_source || 'none'}</span>`;
+  const au = s.auth || {};
+  if(au.state==='device_flow' && au.user_code)
+    html += `<span class="dev">Sign in → <a href="${au.verification_uri}" target="_blank">${au.verification_uri}</a> code <b>${au.user_code}</b></span>`;
+  bar.innerHTML = html;
+}
+function renderAlerts(rows){
+  $('alertCount').textContent = rows.length ? `(${rows.length})` : '';
+  const box = $('alertsBox');
+  if(!rows.length){ box.textContent = 'No alerts yet.'; return; }
+  box.innerHTML = rows.map(a=>`<div class="alert-row"><span class="s-${a.side}">${String(a.side||'').toUpperCase()}</span> `
+    + `<b>${a.instrument}</b> @ ${fmtA(a.edge)} · hit ${fmtA(a.hit_price)} · ${a.confidence||''} · `
+    + `${String(a.ts||'').replace('T',' ').slice(0,19)}Z</div>`).join('');
+}
+// ---- tabs ----
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=> t.classList.toggle('active', t.dataset.tab===name));
+  document.querySelectorAll('.tabpanel').forEach(p=> p.classList.toggle('hidden', p.id!=='tab-'+name));
+  if(name==='instruments') loadOverview();
+  else if(name==='config') loadConfigForm();
+  else if(name==='chart' && chart){ requestAnimationFrame(()=>{ try{ chart.timeScale().fitContent(); }catch(e){} }); }
+}
+
+// ---- instruments & data coverage ----
+async function loadOverview(){
+  $('ovStatus').textContent = 'loading…';
+  try {
+    const r = await jget('instruments/overview');
+    renderOverview(r.instruments || []);
+    $('ovStatus').textContent = (r.instruments || []).length + ' instrument(s)';
+  } catch(e){ $('ovStatus').textContent = 'failed to load'; }
+}
+function fmtNear(z){
+  if(!z) return '—';
+  const extra = (z.distance_atr==null ? '' : ` · ${fmtA(z.distance_atr)} ATR`) + (z.confidence ? ' · '+z.confidence : '');
+  return fmtPrice(z.center) + extra;
+}
+function renderOverview(rows){
+  const cols = ['Instrument','Bars','From','To','TFs','Price','Nearest support','Nearest resistance'];
+  const t = $('ovTable');
+  t.tHead.innerHTML = '<tr>'+cols.map(c=>`<th>${c}</th>`).join('')+'</tr>';
+  if(!rows.length){
+    t.tBodies[0].innerHTML = '<tr><td colspan="8" class="empty">No instruments yet — upload data, or let the live feed build bars.</td></tr>';
+    return;
+  }
+  t.tBodies[0].innerHTML = rows.map(r=>`<tr>
+    <td><b>${r.instrument}</b></td><td>${r.rows}</td>
+    <td>${String(r.first||'').slice(0,16)}</td><td>${String(r.last||'').slice(0,16)}</td>
+    <td>${(r.timeframes||[]).join(' ') || '—'}</td>
+    <td>${r.current_price==null ? '—' : fmtPrice(r.current_price)}</td>
+    <td class="near s-support">${fmtNear(r.nearest_support)}</td>
+    <td class="near s-resistance">${fmtNear(r.nearest_resistance)}</td></tr>`).join('');
+}
+
+// ---- config tab ----
+async function loadConfigForm(){
+  try {
+    const c = await jget('config');
+    $('cfgWebhookStatus').textContent = '(currently: ' + (c.webhook_source || 'none') + ')';
+    $('cfgAnalysisOnly').checked = c.feed_enabled === false;
+    const m = c.monitor || {};
+    $('cfgPoll').value = m.poll_sec ?? 2;
+    $('cfgMaxAge').value = m.max_age_sec ?? 30;
+    $('cfgRecompute').value = m.zone_recompute_sec ?? 300;
+  } catch(e){ $('cfgSaveStatus').textContent = 'could not load config'; }
+}
+async function saveConfig(){
+  const body = {
+    feed_enabled: !$('cfgAnalysisOnly').checked,
+    monitor: { poll_sec: parseInt($('cfgPoll').value)||2, max_age_sec: parseInt($('cfgMaxAge').value)||30,
+               zone_recompute_sec: parseInt($('cfgRecompute').value)||300 },
+  };
+  const wh = $('cfgWebhook').value.trim();
+  if(wh) body.teams_webhook = wh;          // blank = keep current
+  try {
+    const r = await jpost('config', body);
+    $('cfgWebhook').value = '';
+    $('cfgSaveStatus').textContent = 'Saved. webhook: ' + (r.webhook_source || 'none')
+      + (body.feed_enabled ? '' : ' · analysis-only applies on next launch');
+    setStatus('Config saved.', 'ok');
+    loadConfigForm();
+  } catch(e){ $('cfgSaveStatus').textContent = 'save failed'; }
+}
+
+// closing the window quits the app: tell the server on unload (debounced server-side,
+// so a refresh — which immediately re-GETs / — won't shut it down).
+window.addEventListener('pagehide', ()=>{
+  if(feedTimer) clearInterval(feedTimer);
+  try{ navigator.sendBeacon('/api/exit'); }catch(e){}
+});
 document.addEventListener('DOMContentLoaded', init);
 </script>
 </body>

@@ -2,7 +2,7 @@
 sr_data_store/
 *.parquet
 *_master.csv
-
+new_thing/
 # --- Python ----------------------------------------------------------------
 __pycache__/
 *.py[cod]

@@ -42,6 +42,14 @@ def _main():
     if "--selftest" in args:
         from sr.desktop import selftest
         return 0 if selftest() else 1
+    if "--feed" in args:   # the supervised live-feed subprocess (spawned by the app)
+        i = args.index("--feed")
+        level = args[i + 1] if i + 1 < len(args) and not args[i + 1].startswith("--") else "l1"
+        from sr.live.feed_proc import run_feed_l1
+        return run_feed_l1(level)
+    if "--no-feed" in args:   # analysis-only this launch (no live feed / alerts)
+        import os
+        os.environ["SR_NO_FEED"] = "1"
     from sr.desktop import main
     port = None
     if "--port" in args:

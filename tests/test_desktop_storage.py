@@ -94,7 +94,8 @@ def test_api_ingest_and_run(tmp_store):
     assert res["ok"]
     # the entire payload must be strict-JSON (HTTP/JSON bridge contract)
     json.dumps(res, allow_nan=False)
-    assert "figure" in res and "zones" in res and "summary" in res and "diagnostics" in res
+    assert "chart_data" in res and "zones" in res and "summary" in res and "diagnostics" in res
+    assert res["chart_data"]["timeframes"] and res["chart_data"]["candles"]
 
 
 def test_api_preview_bad_path_returns_error():
@@ -147,16 +148,16 @@ def test_preview_clean_file_has_no_invalid(tmp_store):
     assert pv["ok"] and pv["n_invalid"] == 0
 
 
-def test_build_page_inlines_plotly():
+def test_build_page_inlines_chart_lib():
     page = desktop.build_page()
-    assert "<!--PLOTLY_JS-->" not in page and "Plotly" in page
+    assert "<!--CHART_JS-->" not in page and "LightweightCharts" in page
 
 
 def test_http_routes_end_to_end(tmp_store):
     """The real bridge: page + preview(multipart) -> commit -> instruments -> run -> delete."""
     client = desktop.create_app().test_client()
     r = client.get("/")
-    assert r.status_code == 200 and b"Plotly" in r.data and b"<!--PLOTLY_JS-->" not in r.data
+    assert r.status_code == 200 and b"LightweightCharts" in r.data and b"<!--CHART_JS-->" not in r.data
 
     data = _write_xlsx(tmp_store / "h.xlsx", qh_excel_frame(900)).read_bytes()
     r = client.post("/api/preview", content_type="multipart/form-data",
@@ -168,8 +169,12 @@ def test_http_routes_end_to_end(tmp_store):
 
     r = client.post("/api/run", json={"instrument": "HX", "settings": {"timeframes": ["1h", "4h", "1D"]}})
     rj = r.get_json()
-    assert rj["ok"] and "figure" in rj and "summary" in rj and "atr_by_tf" in rj
+    assert rj["ok"] and "chart_data" in rj and "summary" in rj and "atr_by_tf" in rj
     json.dumps(rj, allow_nan=False)  # strict-JSON over the wire
+
+    logs = client.get("/api/logs").get_json()  # in-app log panel feed
+    assert isinstance(logs.get("lines"), list) and any("/api/run" in ln for ln in logs["lines"])
+
     assert client.post("/api/delete", json={"instrument": "HX"}).get_json()["ok"]
 
 
@@ -196,6 +201,21 @@ def test_pending_dict_is_bounded(tmp_store):
 
 def test_selftest_passes():
     assert desktop.selftest(verbose=False) is True
+
+
+def test_lifecycle_ping_cancels_pending_exit():
+    """Window close schedules a debounced shutdown; a page reload (ping) cancels it so a
+    refresh doesn't kill the app."""
+    fired = []
+    lc = desktop._Lifecycle()
+    lc.server = type("S", (), {"shutdown": lambda self: fired.append(1)})()
+    lc.exit()
+    assert lc._timer is not None            # a shutdown is pending
+    lc.ping()
+    assert lc._timer is None and fired == []  # reload cancelled it before it fired
+    lc._shutdown()                          # the real close path hits server.shutdown
+    assert fired == [1]
+    lc.ping()                               # idempotent with no pending timer
 
 
 def test_app_window_cmd_is_chromeless_and_trackable():
