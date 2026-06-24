@@ -115,3 +115,8 @@ covered by `tests/test_live.py`. Routes: `/api/feed/status|prices`, `/api/alerts
   committed (bundled into the exe).
 - Platform is Windows, Python 3.14. Bash tool is Git Bash (POSIX); PowerShell for builds/native.
 - No pywebview/.NET/clr — it was removed (crashed on target machines). Don't reintroduce.
+- **Spreads (FLY/1MS) are ~65% of the feed universe and legitimately quote NEGATIVE or ZERO.** Live
+  price validity (`sr/live/bars.bar_price`, `sr/live/hits.detect_hits`) uses **finiteness, not `> 0`** —
+  a `> 0` gate silently makes every spread go dark (no bars, no alerts). Engine already supports negatives
+  (`ohlc_invalid_mask`: "Negative-price and zero-range bars are valid"). `sr/live/instrunments.json` must
+  stay byte-identical to the authoritative `ls/instrunments.json`. `ls/` is gitignored (real snapshots).

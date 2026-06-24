@@ -2,5 +2,10 @@
 numpy>=1.26
 pandas>=2.2
 openpyxl>=3.1
-plotly>=5.22
+plotly>=5.22            # legacy Streamlit charts only; desktop uses vendored Lightweight Charts
 flask>=3.0
+
+# Live market-data feed (sr/live, the `--feed l1` subprocess) + Azure device-flow auth.
+# lightstreamer pinned to the version the Hertshten feed is verified against (matches ls/).
+lightstreamer-client-lib==2.2.2
+msal>=1.37

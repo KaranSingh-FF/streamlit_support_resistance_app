@@ -14,7 +14,7 @@ from . import paths
 
 log = logging.getLogger("sr")
 
-# from new_thing/LS_authenticate.py — the registered public client + tenant
+# from ls/LS_authenticate.py (authoritative) — the registered public client + tenant
 CLIENT_ID = "2ca7995a-d52e-4a8a-af2d-34ddb23c6594"
 TENANT_ID = "0753c1a4-2be6-4a86-8763-32ae847e1186"
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"

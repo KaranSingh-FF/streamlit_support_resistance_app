@@ -26,30 +26,31 @@ class Hit:
     hit_price: float     # the side that triggered (support: ask, resistance: bid)
 
 
-def _fp(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0
+def _finite(v) -> bool:
+    """Finite price/level — NOT > 0, so negative/zero spread prices and zones are handled."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
 def detect_hits(bid, ask, zones) -> list:
     """Return the list of zones hit at this (bid, ask). zones: dicts with instrument/side/
     zone_low/zone_high/zone_center/confidence/bucket/touches/score."""
     hits: list[Hit] = []
-    b = float(bid) if _fp(bid) else None
-    a = float(ask) if _fp(ask) else None
+    b = float(bid) if _finite(bid) else None
+    a = float(ask) if _finite(ask) else None
     if b is not None and a is not None and b > a:
         return []   # crossed / half-updated book (bid>ask) -> unusable; never fire (mirrors bar_price)
     for z in zones:
         if str(z.get("confidence")) == "Low":
             continue
         zl, zh = z.get("zone_low"), z.get("zone_high")
-        if not (_fp(zl) and _fp(zh)):
+        if not (_finite(zl) and _finite(zh)):
             continue
         zl, zh = float(zl), float(zh)
-        center = float(z["zone_center"]) if _fp(z.get("zone_center")) else (zl + zh) / 2.0
+        center = float(z["zone_center"]) if _finite(z.get("zone_center")) else (zl + zh) / 2.0
         common = dict(instrument=str(z.get("instrument")), center=center, zone_low=zl, zone_high=zh,
                       confidence=str(z.get("confidence")), bucket=str(z.get("bucket")),
                       touches=int(z.get("touches") or 0),
-                      score=float(z["score"]) if _fp(z.get("score")) else 0.0, bid=b, ask=a)
+                      score=float(z["score"]) if _finite(z.get("score")) else 0.0, bid=b, ask=a)
         side = z.get("side")
         if side == "support" and a is not None and a <= zh:
             hits.append(Hit(side="support", edge=zh, hit_price=a, **common))

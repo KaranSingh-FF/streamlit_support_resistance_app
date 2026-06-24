@@ -3,6 +3,10 @@ sr_data_store/
 *.parquet
 *_master.csv
 new_thing/
+# authoritative live-feed reference + REAL snapshots (l1_latest.json etc.) — never commit
+ls/
+*_latest.json
+feed_status*.json
 # --- Python ----------------------------------------------------------------
 __pycache__/
 *.py[cod]

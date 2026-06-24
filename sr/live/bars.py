@@ -13,18 +13,20 @@ import pandas as pd
 _COLS = ["datetime", "open", "high", "low", "close", "volume", "instrument"]
 
 
-def _finite_pos(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0
+def _finite(v) -> bool:
+    """A usable PRICE: finite number, not NaN/None/inf/bool. NOT > 0 — spread instruments
+    (FLY/1MS, the majority of the universe) legitimately quote negative or zero."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
 def bar_price(rec: dict):
-    """Representative price for a tick, or None if nothing usable. Rejects crossed (bid>ask)
-    books and non-positive prices — never invents a price."""
+    """Representative price for a tick, or None if nothing usable. Rejects a crossed (bid>ask)
+    book and NaN/None — but accepts negative/zero prices (valid for spreads). Never invents a price."""
     trade = rec.get("trade")
-    if _finite_pos(trade):
+    if _finite(trade):
         return float(trade)
     bid, ask = rec.get("bid"), rec.get("ask")
-    b_ok, a_ok = _finite_pos(bid), _finite_pos(ask)
+    b_ok, a_ok = _finite(bid), _finite(ask)
     if b_ok and a_ok:
         return (float(bid) + float(ask)) / 2.0 if bid <= ask else None
     if b_ok:

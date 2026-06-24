@@ -46,7 +46,21 @@ def test_bar_price_rules():
     assert bars.bar_price({"bid": 70.0, "ask": 70.2}) == 70.1                     # mid
     assert bars.bar_price({"bid": 70.0, "ask": 69.0}) is None                     # crossed -> unusable
     assert bars.bar_price({"ask": 70.2}) == 70.2                                  # one side
-    assert bars.bar_price({"bid": 0, "ask": float("nan"), "trade": -1}) is None   # no usable price
+    # spreads (FLY/1MS) legitimately quote negative/zero -> valid, NOT dropped
+    assert bars.bar_price({"bid": -0.37, "ask": -0.35, "trade": -0.37}) == -0.37  # negative trade
+    assert abs(bars.bar_price({"bid": -0.37, "ask": -0.35}) - (-0.36)) < 1e-9     # negative mid
+    assert bars.bar_price({"bid": 0.0, "ask": 0.03}) == 0.015                     # zero bid valid
+    assert bars.bar_price({"trade": float("nan"), "bid": None, "ask": None}) is None  # nothing finite
+
+
+def test_negative_spread_builds_bar_and_fires_hit():
+    tk = [_tick(0, -0.37, total_traded_qty=10), _tick(30, -0.35, total_traded_qty=12)]
+    df = bars.bars_from_ticks(tk, "Brent N26 FLY")
+    assert len(df) == 1 and df.iloc[0]["low"] == -0.37 and df.iloc[0]["close"] == -0.35
+    z = [{"instrument": "Brent N26 FLY", "side": "support", "zone_low": -0.40, "zone_high": -0.36,
+          "zone_center": -0.38, "confidence": "High", "bucket": "active", "touches": 3, "score": 9.0}]
+    h = hits.detect_hits(bid=-0.39, ask=-0.36, zones=z)          # ask -0.36 <= support edge -0.36 -> fire
+    assert len(h) == 1 and h[0].side == "support" and h[0].edge == -0.36
 
 
 def _tick(minute_sec, price=None, **kw):
@@ -251,6 +265,30 @@ def test_bar_builder_late_tick_does_not_overwrite_bar(tmp_store):
     bb.build_once(now_utc=datetime(2026, 6, 24, 10, 6, tzinfo=timezone.utc))
     again = storage.load_master(name).set_index("datetime").loc[pd.Timestamp("2026-06-24 10:00:00")]
     assert (again["open"], again["high"], again["low"], again["close"]) == (70.0, 70.5, 69.8, 69.8)
+
+
+def test_monitor_real_shaped_snapshot(tmp_store, monkeypatch):
+    # real production snapshot shape: bare-id keys, full records, ~12% with no live quote (None bid/ask)
+    monkeypatch.delenv("SR_TEAMS_WEBHOOK", raising=False)
+    n26, m26 = "Brent N26", "Brent M26"   # real ids 805633113204488608 / 8914890790769645064
+    _master(n26); _master(m26)
+    config.write_config({"teams_webhook": "https://x.webhook.office.com/hook"})
+    posted = []
+    monkeypatch.setattr(zones.ZoneCache, "get", lambda self, name: ([
+        {"instrument": name, "side": "support", "zone_low": 70.10, "zone_high": 70.20, "zone_center": 70.15,
+         "confidence": "High", "bucket": "active", "touches": 5, "score": 12.0}], 0.01))
+    monkeypatch.setattr(monitor.teams, "post_teams", lambda url, card, **k: (posted.append(card) or True))
+    now = datetime.now(timezone.utc)
+    storage.write_json_atomic(paths.snapshot_path("l1"), {"sequence": 99, "written_at": now.isoformat(), "latest": {
+        "805633113204488608": {"instrumentId": "805633113204488608", "bidPrice": 70.18, "askPrice": 70.20,
+                               "tradePrice": 70.19, "_recv_ts": now.isoformat()},
+        "8914890790769645064": {"instrumentId": "8914890790769645064", "bidPrice": None, "askPrice": None,
+                               "tradePrice": None, "_recv_ts": now.isoformat()},
+    }})
+    storage.write_json_atomic(paths.feed_status_path("l1"), {"status": "CONNECTED"})
+    monitor.Monitor()._tick()
+    assert len(posted) == 1                          # the quoted instrument fires; the no-quote one is skipped, no crash
+    assert alerts.read_recent_alerts(5)[0]["instrument"] == n26
 
 
 def test_monitor_per_instrument_staleness(tmp_store, monkeypatch):

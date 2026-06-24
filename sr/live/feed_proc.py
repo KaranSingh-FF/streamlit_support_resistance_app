@@ -137,7 +137,7 @@ def run_feed_l1(level: str = "l1") -> int:
 
     _write_status("CONNECTING", subscribed=len(sub_ids))
     client.connect()
-    time.sleep(8)
+    time.sleep(10)   # settle window before subscribe — parity with ls/LS_feed.py (verified in production)
     client.subscribe(sub)
     log.info("feed l1 subscribed to %d instruments as %s", len(sub_ids), user)
 
